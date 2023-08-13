@@ -11,11 +11,11 @@ export const SupportingContent = ({ supportingContent }: Props) => {
         <ul className={styles.supportingContentNavList}>
             {supportingContent.map((x, i) => {
                 const parsed = parseSupportingContentItem(x);
-
-                return (
+                
+                 return (
                     <li className={styles.supportingContentItem}>
                         <h4 className={styles.supportingContentItemHeader}>{parsed.title}</h4>
-                        <p className={styles.supportingContentItemText}>{parsed.content}</p>
+                        <p className={styles.supportingContentItemText} dangerouslySetInnerHTML={{ __html: parsed.content }} />
                     </li>
                 );
             })}

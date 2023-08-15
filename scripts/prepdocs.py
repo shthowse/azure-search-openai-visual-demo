@@ -6,51 +6,89 @@ import io
 import os
 import re
 import time
-
+import requests
+import mimetypes
+import fitz
 import openai
+from datetime import datetime, timedelta
+from PIL import Image, ImageDraw, ImageFont
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import AzureDeveloperCliCredential
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import *
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 from pypdf import PdfReader, PdfWriter
 from tenacity import retry, stop_after_attempt, wait_random_exponential
-
+ 
 MAX_SECTION_LENGTH = 1000
 SENTENCE_SEARCH_LIMIT = 100
 SECTION_OVERLAP = 100
 
-def blob_name_from_file_page(filename, page = 0):
+def blob_name_from_file_page(filename, search_images, page = 0):
     if os.path.splitext(filename)[1].lower() == ".pdf":
-        return os.path.splitext(os.path.basename(filename))[0] + f"-{page}" + ".pdf"
+        return os.path.splitext(os.path.basename(filename))[0] + f"-{page}" + ".png" if search_images else ".pdf"
     else:
         return os.path.basename(filename)
 
-def upload_blobs(filename):
+def pdf_to_png(file_path, page_number):
+    doc = fitz.open(file_path)
+    page = doc.load_page(page_number)
+    pix = page.get_pixmap()
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    output = io.BytesIO()
+    img.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+def add_text_to_image(image_data, text):
+    image = Image.open(image_data)
+    font = ImageFont.truetype("arial.ttf", 20)
+    draw = ImageDraw.Draw(image)
+    
+    # Position text at the top left
+    x = 10
+    y = 10
+
+    draw.text((x, y), text, font=font, fill="black")
+    
+    byte_arr = io.BytesIO()
+    image.save(byte_arr, format='PNG')
+    byte_arr.seek(0)
+
+    return byte_arr
+
+def upload_blobs(filename, upload_as_images):
     blob_service = BlobServiceClient(account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds)
     blob_container = blob_service.get_container_client(args.container)
     if not blob_container.exists():
         blob_container.create_container()
 
-    # if file is PDF split into pages and upload each page as a separate blob
+    # If file is PDF split into pages and upload each page as a separate blob
     if os.path.splitext(filename)[1].lower() == ".pdf":
         reader = PdfReader(filename)
         pages = reader.pages
         for i in range(len(pages)):
-            blob_name = blob_name_from_file_page(filename, i)
-            if args.verbose: print(f"\tUploading blob for page {i} -> {blob_name}")
-            f = io.BytesIO()
-            writer = PdfWriter()
-            writer.add_page(pages[i])
-            writer.write(f)
-            f.seek(0)
-            blob_container.upload_blob(blob_name, f, overwrite=True)
+            blob_name = blob_name_from_file_page(filename, upload_as_images, i)
+            if upload_as_images:
+                if args.verbose: print(f"\tConverting page {i} to image and uploading -> {blob_name}")
+                image_data = pdf_to_png(filename, i)
+                modified_image_data = add_text_to_image(image_data,  f"SourceFileName:{blob_name}")
+                blob_container.upload_blob(blob_name, modified_image_data, overwrite=True)
+            else:
+                if args.verbose: print(f"\tUploading blob for page {i} -> {blob_name}")
+                f = io.BytesIO()
+                writer = PdfWriter()
+                writer.add_page(pages[i])
+                writer.write(f)
+                f.seek(0)
+                blob_container.upload_blob(blob_name, f, overwrite=True)
     else:
         blob_name = blob_name_from_file_page(filename)
         with open(filename,"rb") as data:
             blob_container.upload_blob(blob_name, data, overwrite=True)
+
 
 def remove_blobs(filename):
     if args.verbose: print(f"Removing blobs for '{filename or '<all>'}'")
@@ -113,7 +151,7 @@ def get_document_text(filename):
                         if idx >=0 and idx < page_length:
                             table_chars[idx] = table_id
 
-            # build page text by replacing charcters in table spans with table html
+            # build page text by replacing characters in table spans with table html
             page_text = ""
             added_tables = set()
             for idx, table_id in enumerate(table_chars):
@@ -194,31 +232,82 @@ def filename_to_id(filename):
     filename_hash = base64.b16encode(filename.encode('utf-8')).decode('ascii')
     return f"file-{filename_ascii}-{filename_hash}"
 
-def create_sections(filename, page_map, use_vectors):
+def create_sections(filename, page_map, use_vectors, search_images):
     file_id = filename_to_id(filename)
     for i, (content, pagenum) in enumerate(split_text(page_map)):
+        blob_name = blob_name_from_file_page(filename, search_images, pagenum)
         section = {
             "id": f"{file_id}-page-{i}",
             "content": content,
             "category": args.category,
-            "sourcepage": blob_name_from_file_page(filename, pagenum),
+            "sourcepage": blob_name,
             "sourcefile": filename
         }
         if use_vectors:
-            section["embedding"] = compute_embedding(content)
+            section["embedding"] = compute_text_embedding(content)
+        if search_images:
+            section["imageEmbedding"] = compute_image_embedding(blob_name)
         yield section
 
-def before_retry_sleep(retry_state):
-    if args.verbose: print(f"Rate limited on the OpenAI embeddings API, sleeping before retrying...")
+def before_retry_sleep(api_name):
+    def api_before_retry_sleep(retry_state):
+        if args.verbose: print(f"Rate limited on the {api_name} embeddings API, sleeping before retrying...")
+    return api_before_retry_sleep
+    
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(15), before_sleep=before_retry_sleep)
-def compute_embedding(text):
-    return openai.Embedding.create(engine=args.openaideployment, input=text)["data"][0]["embedding"]
+@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(15), before_sleep=before_retry_sleep("OpenAI"))
+def compute_text_embedding(text):
+    return openai.Embedding.create(engine="embedding", input=text)["data"][0]["embedding"]
+
+def save_base64_as_image(img_string, file_path):
+    img_data = base64.b64decode(img_string)
+    with open(file_path, 'wb') as f:
+        f.write(img_data)
+
+# Looks like azure-ai-vision==0.13.0b1 does not support vectorizeImage yet
+@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(15), before_sleep=before_retry_sleep("Computer Vision"))
+def compute_image_embedding(file_name):
+    print(f"compute_image_embedding '{file_name}' ")
+
+    blob_service = BlobServiceClient(account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds)
+    blob_client = blob_service.get_blob_client(args.container, file_name)
+
+    # Get a user delegation key
+    key_start_time = datetime.utcnow()
+    key_expiry_time = key_start_time + timedelta(days=7)  # Key is valid for 7 days
+    user_delegation_key = blob_service.get_user_delegation_key(key_start_time, key_expiry_time)
+
+    sas_token_params = {
+        "blob_name": file_name,
+        "container_name": args.container,
+        "user_delegation_key": user_delegation_key,
+        "permission": BlobSasPermissions(read=True),
+        "expiry": datetime.utcnow() + timedelta(minutes=2),
+    }
+    sas_token = generate_blob_sas(account_name=blob_client.account_name, **sas_token_params)
+    
+    endpoint = f"{os.environ['VISION_ENDPOINT']}/computervision/retrieval:vectorizeImage"
+    params = {  
+        "api-version": "2023-02-01-preview",
+        "modelVersion":"latest"
+    }  
+    headers = {
+        "Content-Type": "application/json",
+        "Ocp-Apim-Subscription-Key": os.environ['VISION_KEY']
+    }
+    data = {
+        'url': f"{blob_client.url}?{sas_token}"
+    }
+    response = requests.post(endpoint, params=params, headers=headers, json=data)
+    
+    if response.status_code == 200:  
+        return response.json()["vector"]
 
 def create_search_index():
     if args.verbose: print(f"Ensuring search index {args.index} exists")
     index_client = SearchIndexClient(endpoint=f"https://{args.searchservice}.search.windows.net/",
                                      credential=search_creds)
+    
     if args.index not in index_client.list_index_names():
         index = SearchIndex(
             name=args.index,
@@ -230,23 +319,39 @@ def create_search_index():
                             vector_search_dimensions=1536, vector_search_configuration="default"),
                 SimpleField(name="category", type="Edm.String", filterable=True, facetable=True),
                 SimpleField(name="sourcepage", type="Edm.String", filterable=True, facetable=True),
-                SimpleField(name="sourcefile", type="Edm.String", filterable=True, facetable=True)
+                SimpleField(name="sourcefile", type="Edm.String", filterable=True, facetable=True),
+                SearchField(name="imageEmbedding",type=SearchFieldDataType.Collection(SearchFieldDataType.Single), searchable=True, vector_search_dimensions=1024, vector_search_configuration="image-vector-config"),
             ],
+            
             semantic_settings=SemanticSettings(
                 configurations=[SemanticConfiguration(
                     name='default',
                     prioritized_fields=PrioritizedFields(
-                        title_field=None, prioritized_content_fields=[SemanticField(field_name='content')]))]),
-                vector_search=VectorSearch(
-                    algorithm_configurations=[
-                        VectorSearchAlgorithmConfiguration(
-                            name="default",
-                            kind="hnsw",
-                            hnsw_parameters=HnswParameters(metric="cosine") 
-                        )
-                    ]
-                )        
-            )
+                    title_field=None, prioritized_content_fields=[SemanticField(field_name='content')])
+                    )]
+            ),
+
+            vector_search=VectorSearch(
+                algorithm_configurations=[
+                    VectorSearchAlgorithmConfiguration(
+                        name="default",
+                        kind="hnsw",
+                        hnsw_parameters=HnswParameters(metric="cosine") 
+                    ),
+                    # TODO: Check if we need another config
+                    VectorSearchAlgorithmConfiguration(
+                        name="image-vector-config",
+                        kind="hnsw",
+                        hnsw_parameters={
+                            "m": 4,
+                            "efConstruction": 400,
+                            "efSearch": 1000,
+                            "metric": "cosine"
+                        }
+                    )
+                ]
+            )        
+        )
         if args.verbose: print(f"Creating {args.index} search index")
         index_client.create_index(index)
     else:
@@ -308,6 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("--openaiservice", help="Name of the Azure OpenAI service used to compute embeddings")
     parser.add_argument("--openaideployment", help="Name of the Azure OpenAI model deployment for an embedding model ('text-embedding-ada-002' recommended)")
     parser.add_argument("--novectors", action="store_true", help="Don't compute embeddings for the sections (e.g. don't call the OpenAI embeddings API during indexing)")
+    parser.add_argument("--searchImages", action="store_true", help="Generate embeddings each page to be searched as a image")
     parser.add_argument("--openaikey", required=False, help="Optional. Use this Azure OpenAI account key instead of the current user identity to login (use az login to set current user for Azure)")
     parser.add_argument("--remove", action="store_true", help="Remove references to this document from blob storage and the search index")
     parser.add_argument("--removeall", action="store_true", help="Remove all blobs from blob storage and documents from the search index")
@@ -361,7 +467,7 @@ if __name__ == "__main__":
                 remove_from_index(None)
             else:
                 if not args.skipblobs:
-                    upload_blobs(filename)
+                    upload_blobs(filename, args.searchImages)
                 page_map = get_document_text(filename)
-                sections = create_sections(os.path.basename(filename), page_map, use_vectors)
+                sections = create_sections(os.path.basename(filename), page_map, use_vectors, args.searchImages)
                 index_sections(os.path.basename(filename), sections)

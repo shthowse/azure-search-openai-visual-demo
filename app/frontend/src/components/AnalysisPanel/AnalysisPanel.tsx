@@ -1,10 +1,10 @@
-import { Icon, Pivot, PivotItem,   } from "@fluentui/react";
- import SyntaxHighlighter from "react-syntax-highlighter";
+import { Stack, Pivot, PivotItem } from "@fluentui/react";
+import SyntaxHighlighter from "react-syntax-highlighter";
 
 import styles from "./AnalysisPanel.module.css";
 
 import { SupportingContent } from "../SupportingContent";
-import { AskResponse, Thoughts } from "../../api";
+import { AskResponse } from "../../api";
 import { AnalysisPanelTabs } from "./AnalysisPanelTabs";
 
 interface Props {
@@ -17,13 +17,11 @@ interface Props {
 }
 
 const pivotItemDisabledStyle = { disabled: true, style: { color: "grey" } };
- 
+
 export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeight, className, onActiveTabChanged }: Props) => {
     const isDisabledThoughtProcessTab: boolean = !answer.thoughtSteps;
-    const isDisabledSupportingContentTab: boolean = !answer.data_points.length;
+    const isDisabledSupportingContentTab: boolean = !answer.data_points;
     const isDisabledCitationTab: boolean = !activeCitation;
-
-    const thoughtSteps = answer.thoughtSteps as Thoughts[];
 
     return (
         <Pivot
@@ -36,10 +34,9 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeigh
                 headerText="Thought process"
                 headerButtonProps={isDisabledThoughtProcessTab ? pivotItemDisabledStyle : undefined}
             >
-                {/* <div className={styles.thoughtProcess} dangerouslySetInnerHTML={{ __html: sanitizedThoughts }}></div> */}
                 <div>
                     <ul className={styles.tList}>
-                        {thoughtSteps.map(t => {
+                        {answer.thoughtSteps.map(t => {
                             return (
                                 <li className={styles.tListItem}>
                                     <div className={styles.tStep}>{t.title}</div>
@@ -48,7 +45,17 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeigh
                                             {JSON.stringify(t.description, null, 2)}
                                         </SyntaxHighlighter>
                                     ) : (
-                                        <div className="item-title">{t.description}</div>
+                                        <>
+                                            <div>{t.description}</div>
+                                            <Stack horizontal tokens={{ childrenGap: 5 }}>
+                                                {t.props &&
+                                                    (Object.keys(t.props) || []).map((k: any) => (
+                                                        <span className={styles.tProp}>
+                                                            {k}: {JSON.stringify(t.props?.[k])}
+                                                        </span>
+                                                    ))}
+                                            </Stack>
+                                        </>
                                     )}
                                 </li>
                             );
@@ -68,7 +75,11 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeigh
                 headerText="Citation"
                 headerButtonProps={isDisabledCitationTab ? pivotItemDisabledStyle : undefined}
             >
-                <iframe title="Citation" src={activeCitation} width="100%" height={citationHeight} />
+                {activeCitation?.endsWith(".png") ? (
+                    <img src={activeCitation} className={styles.citationImg} />
+                ) : (
+                    <iframe title="Citation" src={activeCitation} width="100%" height={citationHeight} />
+                )}
             </PivotItem>
         </Pivot>
     );

@@ -18,7 +18,10 @@ export async function askApi(options: AskRequest): Promise<AskResponse> {
                 prompt_template: options.overrides?.promptTemplate,
                 prompt_template_prefix: options.overrides?.promptTemplatePrefix,
                 prompt_template_suffix: options.overrides?.promptTemplateSuffix,
-                exclude_category: options.overrides?.excludeCategory
+                exclude_category: options.overrides?.excludeCategory,
+                vector_fields: options.overrides?.vectorFields,
+                use_gptv: options.overrides?.useGPTv,
+                gptv_input: options.overrides?.gptVInput
             }
         })
     });

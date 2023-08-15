@@ -1,5 +1,5 @@
 import openai
-from approaches.approach import Approach
+from approaches.approach import Approach, ApproachResult, ThoughtStep
 from azure.search.documents import SearchClient
 from azure.search.documents.models import QueryType
 from langchain.llms.openai import AzureOpenAI
@@ -128,7 +128,14 @@ Thought: {agent_scratchpad}"""
         # Remove references to tool names that might be confused with a citation
         result = result.replace("[CognitiveSearch]", "").replace("[Employee]", "")
 
-        return {"data_points": self.results or [], "answer": result, "thoughts": cb_handler.get_and_reset_log()}
+        return ApproachResult(
+            result,
+            {"text": self.results or []},
+            [
+                ThoughtStep("Search Query", q),
+                ThoughtStep("Prompt", [ cb_handler.get_and_reset_log()])
+            ]
+        )
 
 class EmployeeInfoTool(CsvLookupTool):
     employee_name: str = ""

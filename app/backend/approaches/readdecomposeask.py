@@ -1,6 +1,6 @@
 import openai
 import re
-from approaches.approach import Approach
+from approaches.approach import Approach, ApproachResult, ThoughtStep
 from azure.search.documents import SearchClient
 from azure.search.documents.models import QueryType
 from langchain.llms.openai import AzureOpenAI
@@ -109,7 +109,14 @@ class ReadDecomposeAsk(Approach):
         # generalizing too much and disrupt HTML snippets if present
         result = re.sub(r"<([a-zA-Z0-9_ \-\.]+)>", r"[\1]", result)
 
-        return {"data_points": self.results or [], "answer": result, "thoughts": cb_handler.get_and_reset_log()}
+        return ApproachResult(
+            result,
+            {"text": self.results or []},
+            [
+                ThoughtStep("Search Query", q),
+                ThoughtStep("Prompt", [ cb_handler.get_and_reset_log()])
+            ]
+        )
     
 class ReAct(ReActDocstoreAgent):
     @classmethod

@@ -4,7 +4,7 @@ import openai
 import tiktoken
 from azure.search.documents import SearchClient
 from azure.search.documents.models import QueryType
-from approaches.approach import Approach
+from approaches.approach import Approach, ApproachResult, ThoughtStep
 from text import nonewlines
 
 from core.messagebuilder import MessageBuilder
@@ -159,7 +159,15 @@ If you cannot generate a search query, return just the number 0.
 
         msg_to_display = '\n\n'.join([str(message) for message in messages])
 
-        return {"data_points": results, "answer": chat_content, "thoughts": f"Searched for:<br>{query_text}<br><br>Conversations:<br>" + msg_to_display.replace('\n', '<br>')}
+        return ApproachResult(
+            chat_content,
+            results,
+            [
+                ThoughtStep("Search Query", query_text),
+                ThoughtStep("Conversations", msg_to_display.split('\n'))
+            ]
+        )
+
     
     def get_messages_from_history(self, system_prompt: str, model_id: str, history: Sequence[dict[str, str]], user_conv: str, few_shots = [], max_tokens: int = 4096) -> []:
         message_builder = MessageBuilder(system_prompt, model_id)

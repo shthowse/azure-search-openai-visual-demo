@@ -179,8 +179,8 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         query_text = q if has_text else None
 
         vectors = [
-            {"value": text_query_vector, "fields": "embedding", "k": 50} if text_query_vector else {},
-            {"value": image_query_vector, "fields": "imageEmbedding", "k": 50} if image_query_vector else {}
+            {"value": text_query_vector, "fields": "embedding", "k": 50} if text_query_vector else None,
+            {"value": image_query_vector, "fields": "imageEmbedding", "k": 50} if image_query_vector else None
         ]
         vectors = [v for v in vectors if v]
 
@@ -194,9 +194,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             #                               semantic_configuration_name="default", 
             #                               top=top, 
             #                               query_caption="extractive|highlight-false" if use_semantic_captions else None,
-            #                               vector=text_query_vector, 
-            #                               top_k=50 if text_query_vector else None, 
-            #                               vector_fields="embedding" if text_query_vector else None) 
+            #                               vectors=vectors) 
             r = self.temp_search_fn_multi_vector(query_text,
                                                 filter=filter,
                                                 query_type=QueryType.SEMANTIC,
@@ -211,9 +209,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             # r = self.search_client.search(query_text, 
             #                               filter=filter, 
             #                               top=top, 
-            #                               vector=text_query_vector, 
-            #                               top_k=50 if text_query_vector else None, 
-            #                               vector_fields="embedding" if text_query_vector else None)
+            #                               vectors=vectors)
             r = self.temp_search_fn_multi_vector(query_text, filter=filter, top=top, vectors=vectors)
 
         if use_semantic_captions:

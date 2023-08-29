@@ -5,7 +5,7 @@ import json
 import base64
 
 from approaches.approach import Approach, ApproachResult,ThoughtStep
-from azure.search.documents import SearchClient
+from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import QueryType
 from text import nonewlines
 from typing import Any
@@ -26,7 +26,12 @@ blob_client = BlobServiceClient(
     credential=azure_credential)
 blob_container = blob_client.get_container_client(AZURE_STORAGE_CONTAINER)
 
-class RetrieveThenReadApproach(Approach):
+from approaches.approach import AskApproach
+from core.messagebuilder import MessageBuilder
+from text import nonewlines
+
+
+class RetrieveThenReadApproach(AskApproach):
     """
     Simple retrieve-then-read implementation, using the Cognitive Search and OpenAI APIs directly. It first retrieves
     top documents from search, then constructs a prompt with them, and then uses OpenAI to generate an completion
@@ -43,7 +48,7 @@ class RetrieveThenReadApproach(Approach):
 
     #shots/sample conversation
     question = """
-'What is the deductible for the employee plan for a visit to Overlake in Bellevue?' 
+'What is the deductible for the employee plan for a visit to Overlake in Bellevue?'
 
 Sources:
 info1.txt: deductibles depend on whether you are in-network or out-of-network. In-network deductibles are $500 for employee and $1000 for family. Out-of-network deductibles are $1000 for employee and $2000 for family.
@@ -151,7 +156,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                 item['imageEmbedding'] = self.trim_embedding(item.get('imageEmbedding', []))
         return data
 
-    def run(self, q: str, overrides: dict[str, Any]) -> ApproachResult:
+    async def run(self, q: str, overrides: dict[str, Any]) -> ApproachResult:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
         vector_fields = overrides.get("vector_fields") or []
@@ -169,13 +174,15 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         text_query_vector = None
         image_query_vector = None
 
+        # If retrieval mode includes vectors, compute an embeddings for the query
         if has_vector:
             if "embedding" in vector_fields:
-                text_query_vector = openai.Embedding.create(engine=self.embedding_deployment, input=q)["data"][0]["embedding"]
+                text_query_vector = (await openai.Embedding.acreate(engine=self.embedding_deployment, input=q))["data"][0]["embedding"]
 
             if "imageEmbedding" in vector_fields:
                 image_query_vector = self.generate_image_embeddings(q)
-
+        
+        # Only keep the text query if the retrieval mode uses text, otherwise drop it
         query_text = q if has_text else None
 
         vectors = [
@@ -262,7 +269,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             message_builder.append_message('user', self.question)
             
             messages = message_builder.messages
-            chat_completion = openai.ChatCompletion.create(
+            chat_completion = await openai.ChatCompletion.acreate(
                 deployment_id=self.openai_deployment,
                 model=self.chatgpt_model,
                 messages=messages, 

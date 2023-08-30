@@ -52,7 +52,7 @@ export type Thoughts = {
 
 export type AskResponse = {
     answer: string;
-    thoughtSteps: Thoughts[];
+    thought_steps: Thoughts[];
     data_points: string[];
     error?: string;
 };

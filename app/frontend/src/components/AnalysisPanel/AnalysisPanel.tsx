@@ -19,7 +19,7 @@ interface Props {
 const pivotItemDisabledStyle = { disabled: true, style: { color: "grey" } };
 
 export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeight, className, onActiveTabChanged }: Props) => {
-    const isDisabledThoughtProcessTab: boolean = !answer.thoughtSteps;
+    const isDisabledThoughtProcessTab: boolean = !answer.thought_steps;
     const isDisabledSupportingContentTab: boolean = !answer.data_points;
     const isDisabledCitationTab: boolean = !activeCitation;
 
@@ -36,7 +36,7 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeigh
             >
                 <div>
                     <ul className={styles.tList}>
-                        {answer.thoughtSteps.map(t => {
+                        {answer.thought_steps.map(t => {
                             return (
                                 <li className={styles.tListItem}>
                                     <div className={styles.tStep}>{t.title}</div>

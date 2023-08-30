@@ -12,16 +12,7 @@ from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import BlobServiceClient
 from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
-from quart import (
-    Blueprint,
-    Quart,
-    abort,
-    current_app,
-    jsonify,
-    request,
-    send_file,
-    send_from_directory,
-)
+from quart import Blueprint, Quart, abort, current_app, jsonify, request, send_file, send_from_directory
 
 from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
 from approaches.readdecomposeask import ReadDecomposeAsk
@@ -34,19 +25,23 @@ CONFIG_ASK_APPROACHES = "ask_approaches"
 CONFIG_CHAT_APPROACHES = "chat_approaches"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
 
-bp = Blueprint("routes", __name__, static_folder='static')
+bp = Blueprint("routes", __name__, static_folder="static")
+
 
 @bp.route("/")
 async def index():
     return await bp.send_static_file("index.html")
 
+
 @bp.route("/favicon.ico")
 async def favicon():
     return await bp.send_static_file("favicon.ico")
 
+
 @bp.route("/assets/<path:path>")
 async def assets(path):
     return await send_from_directory("static/assets", path)
+
 
 # Serve content files from blob storage from within the app to keep the example self-contained.
 # *** NOTE *** this assumes that the content files are public, or at least that all users of the app
@@ -64,6 +59,7 @@ async def content_file(path):
     await blob.readinto(blob_file)
     blob_file.seek(0)
     return await send_file(blob_file, mimetype=mime_type, as_attachment=False, attachment_filename=path)
+
 
 @bp.route("/ask", methods=["POST"])
 async def ask():
@@ -84,6 +80,7 @@ async def ask():
         logging.exception("Exception in /ask")
         return jsonify({"error": str(e)}), 500
 
+
 @bp.route("/chat", methods=["POST"])
 async def chat():
     if not request.is_json:
@@ -103,17 +100,20 @@ async def chat():
         logging.exception("Exception in /chat")
         return jsonify({"error": str(e)}), 500
 
+
 @bp.before_request
 async def ensure_openai_token():
     openai_token = current_app.config[CONFIG_OPENAI_TOKEN]
     if openai_token.expires_on < time.time() + 60:
-        openai_token = await current_app.config[CONFIG_CREDENTIAL].get_token("https://cognitiveservices.azure.com/.default")
+        openai_token = await current_app.config[CONFIG_CREDENTIAL].get_token(
+            "https://cognitiveservices.azure.com/.default"
+        )
         current_app.config[CONFIG_OPENAI_TOKEN] = openai_token
         openai.api_key = openai_token.token
 
+
 @bp.before_app_serving
 async def setup_clients():
-
     # Replace these with your own values, either in environment variables or directly here
     AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT")
     AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER")
@@ -123,7 +123,9 @@ async def setup_clients():
     AZURE_OPENAI_CHATGPT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHATGPT_DEPLOYMENT")
     AZURE_OPENAI_CHATGPT_MODEL = os.getenv("AZURE_OPENAI_CHATGPT_MODEL")
     AZURE_OPENAI_EMB_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMB_DEPLOYMENT")
-    AZURE_OPENAI_GPTV_DEPLOYMENT = os.environ.get("AZURE_OPENAI_GPTV_DEPLOYMENT") or "gpt-visual-swn" #"gpt-visual-tip" #"gpt-visual-api"
+    AZURE_OPENAI_GPTV_DEPLOYMENT = (
+        os.environ.get("AZURE_OPENAI_GPTV_DEPLOYMENT") or "gpt-visual-swn"
+    )  # "gpt-visual-tip" #"gpt-visual-api"
     AZURE_OPENAI_GPTV_MODEL = os.environ.get("AZURE_OPENAI_GPTV_MODEL") or "gpt-visual"
 
     KB_FIELDS_CONTENT = os.getenv("KB_FIELDS_CONTENT", "content")
@@ -133,25 +135,24 @@ async def setup_clients():
     # just use 'az login' locally, and managed identity when deployed on Azure). If you need to use keys, use separate AzureKeyCredential instances with the
     # keys for each service
     # If you encounter a blocking error during a DefaultAzureCredential resolution, you can exclude the problematic credential by using a parameter (ex. exclude_shared_token_cache_credential=True)
-    azure_credential = DefaultAzureCredential(exclude_shared_token_cache_credential = True)
+    azure_credential = DefaultAzureCredential(exclude_shared_token_cache_credential=True)
 
     # Set up clients for Cognitive Search and Storage
     search_client = SearchClient(
         endpoint=f"https://{AZURE_SEARCH_SERVICE}.search.windows.net",
         index_name=AZURE_SEARCH_INDEX,
-        credential=azure_credential)
+        credential=azure_credential,
+    )
     blob_client = BlobServiceClient(
-        account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
-        credential=azure_credential)
+        account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net", credential=azure_credential
+    )
     blob_container_client = blob_client.get_container_client(AZURE_STORAGE_CONTAINER)
 
     # Used by the OpenAI SDK
     openai.api_base = f"https://{AZURE_OPENAI_SERVICE}.openai.azure.com"
     openai.api_version = "2023-05-15"
     openai.api_type = "azure_ad"
-    openai_token = await azure_credential.get_token(
-        "https://cognitiveservices.azure.com/.default"
-    )
+    openai_token = await azure_credential.get_token("https://cognitiveservices.azure.com/.default")
     openai.api_key = openai_token.token
 
     # Store on app.config for later use inside requests
@@ -164,6 +165,7 @@ async def setup_clients():
     current_app.config[CONFIG_ASK_APPROACHES] = {
         "rtr": RetrieveThenReadApproach(
             search_client,
+            blob_container_client,
             AZURE_OPENAI_CHATGPT_DEPLOYMENT,
             AZURE_OPENAI_CHATGPT_MODEL,
             AZURE_OPENAI_GPTV_DEPLOYMENT,
@@ -179,7 +181,8 @@ async def setup_clients():
             KB_FIELDS_SOURCEPAGE,
             KB_FIELDS_CONTENT
         ),
-        "rda": ReadDecomposeAsk(search_client,
+        "rda": ReadDecomposeAsk(
+            search_client,
             AZURE_OPENAI_CHATGPT_DEPLOYMENT,
             AZURE_OPENAI_EMB_DEPLOYMENT,
             KB_FIELDS_SOURCEPAGE,

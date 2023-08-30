@@ -34,21 +34,23 @@ from azure.search.documents.indexes.models import (
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 from pypdf import PdfReader, PdfWriter
 from tenacity import retry, stop_after_attempt, wait_random_exponential
- 
+
 MAX_SECTION_LENGTH = 1000
 SENTENCE_SEARCH_LIMIT = 100
 SECTION_OVERLAP = 100
 
 open_ai_token_cache = {}
-CACHE_KEY_TOKEN_CRED = 'openai_token_cred'
-CACHE_KEY_CREATED_TIME = 'created_time'
-CACHE_KEY_TOKEN_TYPE = 'token_type'
+CACHE_KEY_TOKEN_CRED = "openai_token_cred"
+CACHE_KEY_CREATED_TIME = "created_time"
+CACHE_KEY_TOKEN_TYPE = "token_type"
 
-def blob_name_from_file_page(filename, search_images, page = 0):
+
+def blob_name_from_file_page(filename, is_image, page=0):
     if os.path.splitext(filename)[1].lower() == ".pdf":
-        return os.path.splitext(os.path.basename(filename))[0] + f"-{page}" + ".png" if search_images else ".pdf"
+        return os.path.splitext(os.path.basename(filename))[0] + f"-{page}" + ".png" if is_image else ".pdf"
     else:
         return os.path.basename(filename)
+
 
 def pdf_to_png(file_path, page_number):
     doc = fitz.open(file_path)
@@ -60,22 +62,24 @@ def pdf_to_png(file_path, page_number):
     output.seek(0)
     return output
 
+
 def add_text_to_image(image_data, text):
     image = Image.open(image_data)
     font = ImageFont.truetype("arial.ttf", 20)
     draw = ImageDraw.Draw(image)
-    
+
     # Position text at the top left
     x = 10
     y = 10
 
     draw.text((x, y), text, font=font, fill="black")
-    
+
     byte_arr = io.BytesIO()
-    image.save(byte_arr, format='PNG')
+    image.save(byte_arr, format="PNG")
     byte_arr.seek(0)
 
     return byte_arr
+
 
 def upload_blobs(filename, upload_as_images):
     blob_service = BlobServiceClient(account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds)
@@ -90,12 +94,14 @@ def upload_blobs(filename, upload_as_images):
         for i in range(len(pages)):
             blob_name = blob_name_from_file_page(filename, upload_as_images, i)
             if upload_as_images:
-                if args.verbose: print(f"\tConverting page {i} to image and uploading -> {blob_name}")
+                if args.verbose:
+                    print(f"\tConverting page {i} to image and uploading -> {blob_name}")
                 image_data = pdf_to_png(filename, i)
-                modified_image_data = add_text_to_image(image_data,  f"SourceFileName:{blob_name}")
+                modified_image_data = add_text_to_image(image_data, f"SourceFileName:{blob_name}")
                 blob_container.upload_blob(blob_name, modified_image_data, overwrite=True)
             else:
-                if args.verbose: print(f"\tUploading blob for page {i} -> {blob_name}")
+                if args.verbose:
+                    print(f"\tUploading blob for page {i} -> {blob_name}")
                 f = io.BytesIO()
                 writer = PdfWriter()
                 writer.add_page(pages[i])
@@ -104,12 +110,13 @@ def upload_blobs(filename, upload_as_images):
                 blob_container.upload_blob(blob_name, f, overwrite=True)
     else:
         blob_name = blob_name_from_file_page(filename)
-        with open(filename,"rb") as data:
+        with open(filename, "rb") as data:
             blob_container.upload_blob(blob_name, data, overwrite=True)
 
 
 def remove_blobs(filename):
-    if args.verbose: print(f"Removing blobs for '{filename or '<all>'}'")
+    if args.verbose:
+        print(f"Removing blobs for '{filename or '<all>'}'")
     blob_service = BlobServiceClient(account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds)
     blob_container = blob_service.get_container_client(args.container)
     if blob_container.exists():
@@ -119,8 +126,10 @@ def remove_blobs(filename):
             prefix = os.path.splitext(os.path.basename(filename))[0]
             blobs = filter(lambda b: re.match(f"{prefix}-\d+\.pdf", b), blob_container.list_blob_names(name_starts_with=os.path.splitext(os.path.basename(prefix))[0]))
         for b in blobs:
-            if args.verbose: print(f"\tRemoving blob {b}")
+            if args.verbose:
+                print(f"\tRemoving blob {b}")
             blob_container.delete_blob(b)
+
 
 def table_to_html(table):
     table_html = "<table>"
@@ -130,12 +139,15 @@ def table_to_html(table):
         for cell in row_cells:
             tag = "th" if (cell.kind == "columnHeader" or cell.kind == "rowHeader") else "td"
             cell_spans = ""
-            if cell.column_span > 1: cell_spans += f" colSpan={cell.column_span}"
-            if cell.row_span > 1: cell_spans += f" rowSpan={cell.row_span}"
+            if cell.column_span > 1:
+                cell_spans += f" colSpan={cell.column_span}"
+            if cell.row_span > 1:
+                cell_spans += f" rowSpan={cell.row_span}"
             table_html += f"<{tag}{cell_spans}>{html.escape(cell.content)}</{tag}>"
-        table_html +="</tr>"
+        table_html += "</tr>"
     table_html += "</table>"
     return table_html
+
 
 def get_document_text(filename):
     offset = 0
@@ -148,10 +160,11 @@ def get_document_text(filename):
             page_map.append((page_num, offset, page_text))
             offset += len(page_text)
     else:
-        if args.verbose: print(f"Extracting text from '{filename}' using Azure Form Recognizer")
+        if args.verbose:
+            print(f"Extracting text from '{filename}' using Azure Form Recognizer")
         form_recognizer_client = DocumentAnalysisClient(endpoint=f"https://{args.formrecognizerservice}.cognitiveservices.azure.com/", credential=formrecognizer_creds, headers={"x-ms-useragent": "azure-search-chat-demo/1.0.0"})
         with open(filename, "rb") as f:
-            poller = form_recognizer_client.begin_analyze_document("prebuilt-layout", document = f)
+            poller = form_recognizer_client.begin_analyze_document("prebuilt-layout", document=f)
         form_recognizer_results = poller.result()
 
         for page_num, page in enumerate(form_recognizer_results.pages):
@@ -160,13 +173,13 @@ def get_document_text(filename):
             # mark all positions of the table spans in the page
             page_offset = page.spans[0].offset
             page_length = page.spans[0].length
-            table_chars = [-1]*page_length
+            table_chars = [-1] * page_length
             for table_id, table in enumerate(tables_on_page):
                 for span in table.spans:
                     # replace all table spans with "table_id" in table_chars array
                     for i in range(span.length):
                         idx = span.offset - page_offset + i
-                        if idx >=0 and idx < page_length:
+                        if idx >= 0 and idx < page_length:
                             table_chars[idx] = table_id
 
             # build page text by replacing characters in table spans with table html
@@ -185,10 +198,12 @@ def get_document_text(filename):
 
     return page_map
 
+
 def split_text(page_map):
     SENTENCE_ENDINGS = [".", "!", "?"]
     WORDS_BREAKS = [",", ";", ":", " ", "(", ")", "[", "]", "{", "}", "\t", "\n"]
-    if args.verbose: print(f"Splitting '{filename}' into sections")
+    if args.verbose:
+        print(f"Splitting '{filename}' into sections")
 
     def find_page(offset):
         num_pages = len(page_map)
@@ -214,7 +229,7 @@ def split_text(page_map):
                     last_word = end
                 end += 1
             if end < length and all_text[end] not in SENTENCE_ENDINGS and last_word > 0:
-                end = last_word # Fall back to at least keeping a whole word
+                end = last_word  # Fall back to at least keeping a whole word
         if end < length:
             end += 1
 
@@ -233,11 +248,12 @@ def split_text(page_map):
         yield (section_text, find_page(start))
 
         last_table_start = section_text.rfind("<table")
-        if (last_table_start > 2 * SENTENCE_SEARCH_LIMIT and last_table_start > section_text.rfind("</table")):
+        if last_table_start > 2 * SENTENCE_SEARCH_LIMIT and last_table_start > section_text.rfind("</table"):
             # If the section ends with an unclosed table, we need to start the next section with the table.
             # If table starts inside SENTENCE_SEARCH_LIMIT, we ignore it, as that will cause an infinite loop for tables longer than MAX_SECTION_LENGTH
             # If last table starts inside SECTION_OVERLAP, keep overlapping
-            if args.verbose: print(f"Section ends with unclosed table, starting next section with the table at page {find_page(start)} offset {start} table start {last_table_start}")
+            if args.verbose:
+                print(f"Section ends with unclosed table, starting next section with the table at page {find_page(start)} offset {start} table start {last_table_start}")
             start = min(end - SECTION_OVERLAP, start + last_table_start)
         else:
             start = end - SECTION_OVERLAP
@@ -245,42 +261,44 @@ def split_text(page_map):
     if start + SECTION_OVERLAP < end:
         yield (all_text[start:end], find_page(start))
 
+
 def filename_to_id(filename):
     filename_ascii = re.sub("[^0-9a-zA-Z_-]", "_", filename)
-    filename_hash = base64.b16encode(filename.encode('utf-8')).decode('ascii')
+    filename_hash = base64.b16encode(filename.encode("utf-8")).decode("ascii")
     return f"file-{filename_ascii}-{filename_hash}"
+
 
 def create_sections(filename, page_map, use_vectors, search_images):
     file_id = filename_to_id(filename)
     for i, (content, pagenum) in enumerate(split_text(page_map)):
         blob_name = blob_name_from_file_page(filename, search_images, pagenum)
-        section = {
-            "id": f"{file_id}-page-{i}",
-            "content": content,
-            "category": args.category,
-            "sourcepage": blob_name,
-            "sourcefile": filename
-        }
+        section = {"id": f"{file_id}-page-{i}", "content": content, "category": args.category, "sourcepage": blob_name, "sourcefile": filename}
         if use_vectors:
             section["embedding"] = compute_text_embedding(content)
         if search_images:
             section["imageEmbedding"] = compute_image_embedding(blob_name)
         yield section
 
+
 def before_retry_sleep(api_name):
     def api_before_retry_sleep(retry_state):
-        if args.verbose: print(f"Rate limited on the {api_name} embeddings API, sleeping before retrying...")
+        if args.verbose:
+            print(f"Rate limited on the {api_name} embeddings API, sleeping before retrying...")
+
     return api_before_retry_sleep
+
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(15), before_sleep=before_retry_sleep("OpenAI"))
 def compute_text_embedding(text):
     refresh_openai_token()
     return openai.Embedding.create(engine=args.openaideployment, input=text)["data"][0]["embedding"]
 
+
 def save_base64_as_image(img_string, file_path):
     img_data = base64.b64decode(img_string)
-    with open(file_path, 'wb') as f:
+    with open(file_path, "wb") as f:
         f.write(img_data)
+
 
 # Looks like azure-ai-vision==0.13.0b1 does not support vectorizeImage yet
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(15), before_sleep=before_retry_sleep("Computer Vision"))
@@ -303,83 +321,55 @@ def compute_image_embedding(file_name):
         "expiry": datetime.utcnow() + timedelta(minutes=2),
     }
     sas_token = generate_blob_sas(account_name=blob_client.account_name, **sas_token_params)
-    
+
     endpoint = f"{os.environ['VISION_ENDPOINT']}/computervision/retrieval:vectorizeImage"
-    params = {  
-        "api-version": "2023-02-01-preview",
-        "modelVersion":"latest"
-    }  
-    headers = {
-        "Content-Type": "application/json",
-        "Ocp-Apim-Subscription-Key": os.environ['VISION_KEY']
-    }
-    data = {
-        'url': f"{blob_client.url}?{sas_token}"
-    }
+    params = {"api-version": "2023-02-01-preview", "modelVersion": "latest"}
+    headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": os.environ["VISION_KEY"]}
+    data = {"url": f"{blob_client.url}?{sas_token}"}
     response = requests.post(endpoint, params=params, headers=headers, json=data)
-    
-    if response.status_code == 200:  
+
+    if response.status_code == 200:
         return response.json()["vector"]
 
+
 def create_search_index():
-    if args.verbose: print(f"Ensuring search index {args.index} exists")
-    index_client = SearchIndexClient(endpoint=f"https://{args.searchservice}.search.windows.net/",
-                                     credential=search_creds)
-    
+    if args.verbose:
+        print(f"Ensuring search index {args.index} exists")
+    index_client = SearchIndexClient(endpoint=f"https://{args.searchservice}.search.windows.net/", credential=search_creds)
+
     if args.index not in index_client.list_index_names():
         index = SearchIndex(
             name=args.index,
             fields=[
                 SimpleField(name="id", type="Edm.String", key=True),
                 SearchableField(name="content", type="Edm.String", analyzer_name="en.microsoft"),
-                SearchField(name="embedding", type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-                            hidden=False, searchable=True, filterable=False, sortable=False, facetable=False,
-                            vector_search_dimensions=1536, vector_search_configuration="default"),
+                SearchField(name="embedding", type=SearchFieldDataType.Collection(SearchFieldDataType.Single), hidden=False, searchable=True, filterable=False, sortable=False, facetable=False, vector_search_dimensions=1536, vector_search_configuration="default"),
                 SimpleField(name="category", type="Edm.String", filterable=True, facetable=True),
                 SimpleField(name="sourcepage", type="Edm.String", filterable=True, facetable=True),
                 SimpleField(name="sourcefile", type="Edm.String", filterable=True, facetable=True),
-                SearchField(name="imageEmbedding",type=SearchFieldDataType.Collection(SearchFieldDataType.Single), searchable=True, vector_search_dimensions=1024, vector_search_configuration="image-vector-config"),
+                SearchField(name="imageEmbedding", type=SearchFieldDataType.Collection(SearchFieldDataType.Single), searchable=True, vector_search_dimensions=1024, vector_search_configuration="image-vector-config"),
             ],
-            
-            semantic_settings=SemanticSettings(
-                configurations=[SemanticConfiguration(
-                    name='default',
-                    prioritized_fields=PrioritizedFields(
-                    title_field=None, prioritized_content_fields=[SemanticField(field_name='content')])
-                    )]
-            ),
-
+            semantic_settings=SemanticSettings(configurations=[SemanticConfiguration(name="default", prioritized_fields=PrioritizedFields(title_field=None, prioritized_content_fields=[SemanticField(field_name="content")]))]),
             vector_search=VectorSearch(
                 algorithm_configurations=[
-                    VectorSearchAlgorithmConfiguration(
-                        name="default",
-                        kind="hnsw",
-                        hnsw_parameters=HnswParameters(metric="cosine") 
-                    ),
+                    VectorSearchAlgorithmConfiguration(name="default", kind="hnsw", hnsw_parameters=HnswParameters(metric="cosine")),
                     # TODO: Check if we need another config
-                    VectorSearchAlgorithmConfiguration(
-                        name="image-vector-config",
-                        kind="hnsw",
-                        hnsw_parameters={
-                            "m": 4,
-                            "efConstruction": 400,
-                            "efSearch": 1000,
-                            "metric": "cosine"
-                        }
-                    )
+                    VectorSearchAlgorithmConfiguration(name="image-vector-config", kind="hnsw", hnsw_parameters={"m": 4, "efConstruction": 400, "efSearch": 1000, "metric": "cosine"}),
                 ]
-            )        
+            ),
         )
-        if args.verbose: print(f"Creating {args.index} search index")
+        if args.verbose:
+            print(f"Creating {args.index} search index")
         index_client.create_index(index)
     else:
-        if args.verbose: print(f"Search index {args.index} already exists")
+        if args.verbose:
+            print(f"Search index {args.index} already exists")
+
 
 def index_sections(filename, sections):
-    if args.verbose: print(f"Indexing sections from '{filename}' into search index '{args.index}'")
-    search_client = SearchClient(endpoint=f"https://{args.searchservice}.search.windows.net/",
-                                    index_name=args.index,
-                                    credential=search_creds)
+    if args.verbose:
+        print(f"Indexing sections from '{filename}' into search index '{args.index}'")
+    search_client = SearchClient(endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds)
     i = 0
     batch = []
     for s in sections:
@@ -388,42 +378,46 @@ def index_sections(filename, sections):
         if i % 1000 == 0:
             results = search_client.upload_documents(documents=batch)
             succeeded = sum([1 for r in results if r.succeeded])
-            if args.verbose: print(f"\tIndexed {len(results)} sections, {succeeded} succeeded")
+            if args.verbose:
+                print(f"\tIndexed {len(results)} sections, {succeeded} succeeded")
             batch = []
 
     if len(batch) > 0:
         results = search_client.upload_documents(documents=batch)
         succeeded = sum([1 for r in results if r.succeeded])
-        if args.verbose: print(f"\tIndexed {len(results)} sections, {succeeded} succeeded")
+        if args.verbose:
+            print(f"\tIndexed {len(results)} sections, {succeeded} succeeded")
+
 
 def remove_from_index(filename):
-    if args.verbose: print(f"Removing sections from '{filename or '<all>'}' from search index '{args.index}'")
-    search_client = SearchClient(endpoint=f"https://{args.searchservice}.search.windows.net/",
-                                    index_name=args.index,
-                                    credential=search_creds)
+    if args.verbose:
+        print(f"Removing sections from '{filename or '<all>'}' from search index '{args.index}'")
+    search_client = SearchClient(endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds)
     while True:
         filter = None if filename is None else f"sourcefile eq '{os.path.basename(filename)}'"
         r = search_client.search("", filter=filter, top=1000, include_total_count=True)
         if r.get_count() == 0:
             break
-        r = search_client.delete_documents(documents=[{ "id": d["id"] } for d in r])
-        if args.verbose: print(f"\tRemoved {len(r)} sections from index")
+        r = search_client.delete_documents(documents=[{"id": d["id"]} for d in r])
+        if args.verbose:
+            print(f"\tRemoved {len(r)} sections from index")
         # It can take a few seconds for search results to reflect changes, so wait a bit
         time.sleep(2)
 
+
 # refresh open ai token every 5 minutes
 def refresh_openai_token():
-    if open_ai_token_cache[CACHE_KEY_TOKEN_TYPE] == 'azure_ad' and open_ai_token_cache[CACHE_KEY_CREATED_TIME] + 300 < time.time():
+    if open_ai_token_cache[CACHE_KEY_TOKEN_TYPE] == "azure_ad" and open_ai_token_cache[CACHE_KEY_CREATED_TIME] + 300 < time.time():
         token_cred = open_ai_token_cache[CACHE_KEY_TOKEN_CRED]
         openai.api_key = token_cred.get_token("https://cognitiveservices.azure.com/.default").token
         open_ai_token_cache[CACHE_KEY_CREATED_TIME] = time.time()
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Prepare documents by extracting content from PDFs, splitting content into sections, uploading to blob storage, and indexing in a search index.",
-        epilog="Example: prepdocs.py '..\data\*' --storageaccount myaccount --container mycontainer --searchservice mysearch --index myindex -v"
-        )
+        epilog="Example: prepdocs.py '..\data\*' --storageaccount myaccount --container mycontainer --searchservice mysearch --index myindex -v",
+    )
     parser.add_argument("files", help="Files to be processed")
     parser.add_argument("--category", help="Value for the category field in the search index for all sections indexed in this run")
     parser.add_argument("--skipblobs", action="store_true", help="Skip uploading individual pages to Azure Blob Storage")
@@ -437,7 +431,7 @@ if __name__ == "__main__":
     parser.add_argument("--openaiservice", help="Name of the Azure OpenAI service used to compute embeddings")
     parser.add_argument("--openaideployment", help="Name of the Azure OpenAI model deployment for an embedding model ('text-embedding-ada-002' recommended)")
     parser.add_argument("--novectors", action="store_true", help="Don't compute embeddings for the sections (e.g. don't call the OpenAI embeddings API during indexing)")
-    parser.add_argument("--searchImages", action="store_true", help="Generate embeddings each page to be searched as a image")
+    parser.add_argument("--searchimages", action="store_true", help="Generate embeddings each page to be searched as a image")
     parser.add_argument("--openaikey", required=False, help="Optional. Use this Azure OpenAI account key instead of the current user identity to login (use az login to set current user for Azure)")
     parser.add_argument("--remove", action="store_true", help="Remove references to this document from blob storage and the search index")
     parser.add_argument("--removeall", action="store_true", help="Remove all blobs from blob storage and documents from the search index")
@@ -485,7 +479,8 @@ if __name__ == "__main__":
 
         print("Processing files...")
         for filename in glob.glob(args.files):
-            if args.verbose: print(f"Processing '{filename}'")
+            if args.verbose:
+                print(f"Processing '{filename}'")
             if args.remove:
                 remove_blobs(filename)
                 remove_from_index(filename)
@@ -494,7 +489,7 @@ if __name__ == "__main__":
                 remove_from_index(None)
             else:
                 if not args.skipblobs:
-                    upload_blobs(filename, args.searchImages)
+                    upload_blobs(filename, args.searchimages)
                 page_map = get_document_text(filename)
-                sections = create_sections(os.path.basename(filename), page_map, use_vectors, args.searchImages)
+                sections = create_sections(os.path.basename(filename), page_map, use_vectors, args.searchimages)
                 index_sections(os.path.basename(filename), sections)

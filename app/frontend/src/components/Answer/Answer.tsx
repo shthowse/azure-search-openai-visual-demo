@@ -43,7 +43,7 @@ export const Answer = ({
                             title="Show thought process"
                             ariaLabel="Show thought process"
                             onClick={() => onThoughtProcessClicked()}
-                            disabled={!answer.thoughtSteps?.length}
+                            disabled={!answer.thought_steps?.length}
                         />
                         <IconButton
                             style={{ color: "black" }}

@@ -5,11 +5,10 @@ from typing import Any
 
 import aiohttp
 import openai
-from approaches.approach import Approach, ApproachResult, ThoughtStep
+from approaches.approach import ApproachResult, ThoughtStep
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import QueryType
 from azure.storage.blob import ContainerClient
-from core.messagebuilder import MessageBuilder
 from text import nonewlines
 
 # Replace these with your own values, either in environment variables or directly here
@@ -19,7 +18,6 @@ AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER")
 
 from approaches.approach import AskApproach
 from core.messagebuilder import MessageBuilder
-from text import nonewlines
 
 
 class RetrieveThenReadApproach(AskApproach):
@@ -153,11 +151,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
 
     def trim_embedding(self, embedding):
         """Format the embedding list to show the first 2 items followed by the count of the remaining items."""
-        return (
-            "[{}, {} ...+{} more]".format(embedding[0], embedding[1], len(embedding) - 2)
-            if len(embedding) > 2
-            else embedding
-        )
+        return "f[{embedding[0]}, {embedding[1]} ...+{len(embedding) - 2} more]" if len(embedding) > 2 else embedding
 
     def trim_embeddings_in_data(self, data):
         """Trim the embeddings in a list of data objects."""

@@ -6,18 +6,26 @@ import time
 
 import aiohttp
 import openai
+from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
+from approaches.readdecomposeask import ReadDecomposeAsk
+from approaches.readretrieveread import ReadRetrieveReadApproach
+from approaches.retrievethenread import RetrieveThenReadApproach
 from azure.identity.aio import DefaultAzureCredential
 from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import BlobServiceClient
 from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
-from quart import Blueprint, Quart, abort, current_app, jsonify, request, send_file, send_from_directory
-
-from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
-from approaches.readdecomposeask import ReadDecomposeAsk
-from approaches.readretrieveread import ReadRetrieveReadApproach
-from approaches.retrievethenread import RetrieveThenReadApproach
+from quart import (
+    Blueprint,
+    Quart,
+    abort,
+    current_app,
+    jsonify,
+    request,
+    send_file,
+    send_from_directory,
+)
 
 CONFIG_OPENAI_TOKEN = "openai_token"
 CONFIG_CREDENTIAL = "azure_credential"
@@ -172,22 +180,22 @@ async def setup_clients():
             AZURE_OPENAI_GPTV_MODEL,
             AZURE_OPENAI_EMB_DEPLOYMENT,
             KB_FIELDS_SOURCEPAGE,
-            KB_FIELDS_CONTENT
+            KB_FIELDS_CONTENT,
         ),
         "rrr": ReadRetrieveReadApproach(
             search_client,
             AZURE_OPENAI_CHATGPT_DEPLOYMENT,
             AZURE_OPENAI_EMB_DEPLOYMENT,
             KB_FIELDS_SOURCEPAGE,
-            KB_FIELDS_CONTENT
+            KB_FIELDS_CONTENT,
         ),
         "rda": ReadDecomposeAsk(
             search_client,
             AZURE_OPENAI_CHATGPT_DEPLOYMENT,
             AZURE_OPENAI_EMB_DEPLOYMENT,
             KB_FIELDS_SOURCEPAGE,
-            KB_FIELDS_CONTENT
-        )
+            KB_FIELDS_CONTENT,
+        ),
     }
     current_app.config[CONFIG_CHAT_APPROACHES] = {
         "rrr": ChatReadRetrieveReadApproach(

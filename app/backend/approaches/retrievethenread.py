@@ -151,7 +151,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
 
     def trim_embedding(self, embedding):
         """Format the embedding list to show the first 2 items followed by the count of the remaining items."""
-        return "f[{embedding[0]}, {embedding[1]} ...+{len(embedding) - 2} more]" if len(embedding) > 2 else embedding
+        return f"[{embedding[0]}, {embedding[1]} ...+{len(embedding) - 2} more]" if len(embedding) > 2 else embedding
 
     def trim_embeddings_in_data(self, data):
         """Trim the embeddings in a list of data objects."""

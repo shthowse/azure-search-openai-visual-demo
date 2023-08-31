@@ -8,7 +8,7 @@ from langchain.callbacks.manager import CallbackManager, Callbacks
 from langchain.chains import LLMChain
 from langchain.llms.openai import AzureOpenAI
 
-from approaches.approach import AskApproach
+from approaches.approach import ApproachResult, AskApproach, ThoughtStep
 from langchainadapters import HtmlCallbackHandler
 from lookuptool import CsvLookupTool
 from text import nonewlines
@@ -136,7 +136,14 @@ Thought: {agent_scratchpad}"""
         # Remove references to tool names that might be confused with a citation
         result = result.replace("[CognitiveSearch]", "").replace("[Employee]", "")
 
-        return {"data_points": retrieve_results or [], "answer": result, "thoughts": cb_handler.get_and_reset_log()}
+        return ApproachResult(
+            result,
+            {"text": retrieve_results or []},
+            [
+                ThoughtStep("Search Query", q),
+                ThoughtStep("Prompt", [ cb_handler.get_and_reset_log()])
+            ]
+        )
 
 class EmployeeInfoTool(CsvLookupTool):
     employee_name: str = ""

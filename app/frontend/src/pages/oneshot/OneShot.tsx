@@ -3,12 +3,27 @@ import { Checkbox, ChoiceGroup, IChoiceGroupOption, Panel, DefaultButton, Spinne
 
 import styles from "./OneShot.module.css";
 
-import { askApi, Approaches, AskResponse, AskRequest, RetrievalMode } from "../../api";
+import { askApi, Approaches, AskResponse, AskRequest, RetrievalMode, VectorFieldOptions, GPTVInput } from "../../api";
 import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
 import { SettingsButton } from "../../components/SettingsButton/SettingsButton";
+
+const modelOptions: IChoiceGroupOption[] = [
+    {
+        key: "default",
+        iconProps: { iconName: "InsertTextBox" },
+        imageSize: { width: 32, height: 32 },
+        text: "Text"
+    },
+    {
+        key: "gptv",
+        iconProps: { iconName: "ImageSearch" },
+        imageSize: { width: 32, height: 32 },
+        text: "Image (GPT-V)"
+    }
+];
 
 export function Component(): JSX.Element {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
@@ -20,7 +35,11 @@ export function Component(): JSX.Element {
     const [retrieveCount, setRetrieveCount] = useState<number>(3);
     const [useSemanticRanker, setUseSemanticRanker] = useState<boolean>(true);
     const [useSemanticCaptions, setUseSemanticCaptions] = useState<boolean>(false);
+    const [useGPTV, setUseGPTV] = useState<boolean>(false);
+    const [gptVInput, setGptVInput] = useState<GPTVInput>(GPTVInput.TextAndImages);
+    const [vectorFieldList, setVectorFieldList] = useState<VectorFieldOptions[]>([]);
     const [excludeCategory, setExcludeCategory] = useState<string>("");
+    const [question, setQuestion] = useState<string>("");
 
     const lastQuestionRef = useRef<string>("");
 
@@ -51,7 +70,10 @@ export function Component(): JSX.Element {
                     top: retrieveCount,
                     retrievalMode: retrievalMode,
                     semanticRanker: useSemanticRanker,
-                    semanticCaptions: useSemanticCaptions
+                    semanticCaptions: useSemanticCaptions,
+                    vectorFields: vectorFieldList,
+                    useGPTv: useGPTV,
+                    gptVInput: gptVInput
                 }
             };
             const result = await askApi(request);
@@ -83,6 +105,10 @@ export function Component(): JSX.Element {
         setRetrievalMode(option?.data || RetrievalMode.Hybrid);
     };
 
+    const onSetGptVInput = (_ev: React.FormEvent<HTMLDivElement>, option?: IDropdownOption<GPTVInput> | undefined) => {
+        setGptVInput(option?.data || GPTVInput.TextAndImages);
+    };
+
     const onApproachChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, option?: IChoiceGroupOption) => {
         setApproach((option?.key as Approaches) || Approaches.RetrieveThenRead);
     };
@@ -101,6 +127,20 @@ export function Component(): JSX.Element {
 
     const onExampleClicked = (example: string) => {
         makeApiRequest(example);
+        setQuestion(example);
+    };
+
+    const onUseGPTv = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
+        setUseGPTV(!!checked);
+        setVectorFieldList([VectorFieldOptions.Embedding, VectorFieldOptions.ImageEmbedding]);
+    };
+
+    const onVectorFieldsChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, option?: IChoiceGroupOption) => {
+        if (option?.key === "both") {
+            setVectorFieldList([VectorFieldOptions.Embedding, VectorFieldOptions.ImageEmbedding]);
+        } else {
+            setVectorFieldList([option?.key as VectorFieldOptions]);
+        }
     };
 
     const onShowCitation = (citation: string) => {
@@ -135,6 +175,21 @@ export function Component(): JSX.Element {
         }
     ];
 
+    const vectorFields: IChoiceGroupOption[] = [
+        {
+            key: VectorFieldOptions.Embedding,
+            text: "Text Embeddings"
+        },
+        {
+            key: VectorFieldOptions.ImageEmbedding,
+            text: "Image Embeddings"
+        },
+        {
+            key: VectorFieldOptions.Both,
+            text: "Text and Image embeddings"
+        }
+    ];
+
     return (
         <div className={styles.oneshotContainer}>
             <div className={styles.oneshotTopSection}>
@@ -142,8 +197,9 @@ export function Component(): JSX.Element {
                 <h1 className={styles.oneshotTitle}>Ask your data</h1>
                 <div className={styles.oneshotQuestionInput}>
                     <QuestionInput
-                        placeholder="Example: Does my plan cover annual eye exams?"
+                        placeholder="Which years did the housing market take a hit?" //"Example: Does my plan cover annual eye exams?"
                         disabled={isLoading}
+                        initQuestion={question}
                         onSend={question => makeApiRequest(question)}
                     />
                 </div>
@@ -249,6 +305,29 @@ export function Component(): JSX.Element {
                     onChange={onUseSemanticCaptionsChange}
                     disabled={!useSemanticRanker}
                 />
+
+                {approach === Approaches.RetrieveThenRead && (
+                    <Checkbox className={styles.oneshotSettingsSeparator} checked={useGPTV} label="Use GPT-V" onChange={onUseGPTv} />
+                )}
+                {useGPTV && (
+                    <Dropdown
+                        className={styles.oneshotSettingsSeparator}
+                        label="GPTV Inputs"
+                        options={[
+                            {
+                                key: GPTVInput.TextAndImages,
+                                text: "Images and text from index",
+                                selected: gptVInput == GPTVInput.TextAndImages,
+                                data: GPTVInput.TextAndImages
+                            },
+                            { key: "images", text: "Images only", selected: gptVInput == GPTVInput.Images, data: GPTVInput.Images },
+                            { key: "text", text: "Text only", selected: gptVInput == GPTVInput.Texts, data: GPTVInput.Texts }
+                        ]}
+                        required
+                        onChange={onSetGptVInput}
+                    />
+                )}
+
                 <Dropdown
                     className={styles.oneshotSettingsSeparator}
                     label="Retrieval mode"
@@ -260,6 +339,15 @@ export function Component(): JSX.Element {
                     required
                     onChange={onRetrievalModeChange}
                 />
+
+                {approach === Approaches.RetrieveThenRead && [RetrievalMode.Vectors, RetrievalMode.Hybrid].includes(retrievalMode) && useGPTV && (
+                    <ChoiceGroup
+                        defaultSelectedKey={VectorFieldOptions.Both}
+                        options={vectorFields}
+                        onChange={onVectorFieldsChange}
+                        label="Vector Fields (Multi-query vector search)"
+                    />
+                )}
             </Panel>
         </div>
     );

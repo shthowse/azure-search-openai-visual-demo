@@ -11,7 +11,7 @@ from langchain.llms.openai import AzureOpenAI
 from langchain.prompts import BasePromptTemplate, PromptTemplate
 from langchain.tools.base import BaseTool
 
-from approaches.approach import AskApproach
+from approaches.approach import ApproachResult, AskApproach, ThoughtStep
 from langchainadapters import HtmlCallbackHandler
 from text import nonewlines
 
@@ -120,7 +120,14 @@ class ReadDecomposeAsk(AskApproach):
         # generalizing too much and disrupt HTML snippets if present
         result = re.sub(r"<([a-zA-Z0-9_ \-\.]+)>", r"[\1]", result)
 
-        return {"data_points": search_results or [], "answer": result, "thoughts": cb_handler.get_and_reset_log()}
+        return ApproachResult(
+            result,
+            {"text": search_results or []},
+            [
+                ThoughtStep("Search Query", q),
+                ThoughtStep("Prompt", [ cb_handler.get_and_reset_log()])
+            ]
+        )
 
 
 

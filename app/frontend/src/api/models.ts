@@ -10,6 +10,18 @@ export const enum RetrievalMode {
     Text = "text"
 }
 
+export const enum GPTVInput {
+    TextAndImages = "textAndImages",
+    Images = "images",
+    Texts = "texts"
+}
+
+export const enum VectorFieldOptions {
+    Embedding = "embedding",
+    ImageEmbedding = "imageEmbedding",
+    Both = "both"
+}
+
 export type AskRequestOverrides = {
     retrievalMode?: RetrievalMode;
     semanticRanker?: boolean;
@@ -21,6 +33,9 @@ export type AskRequestOverrides = {
     promptTemplatePrefix?: string;
     promptTemplateSuffix?: string;
     suggestFollowupQuestions?: boolean;
+    vectorFields?: VectorFieldOptions[];
+    useGPTv?: boolean;
+    gptVInput?: GPTVInput;
 };
 
 export type AskRequest = {
@@ -29,9 +44,15 @@ export type AskRequest = {
     overrides?: AskRequestOverrides;
 };
 
+export type Thoughts = {
+    title: string;
+    description: any; // It can be any output from the api
+    props?: { [key: string]: string };
+};
+
 export type AskResponse = {
     answer: string;
-    thoughts: string | null;
+    thought_steps: Thoughts[];
     data_points: string[];
     error?: string;
 };

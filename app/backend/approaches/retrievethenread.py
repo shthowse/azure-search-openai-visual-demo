@@ -5,19 +5,16 @@ from typing import Any
 
 import aiohttp
 import openai
-from approaches.approach import ApproachResult, ThoughtStep
+from approaches.approach import ApproachResult, AskApproach, ThoughtStep
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import QueryType
 from azure.storage.blob import ContainerClient
+from core.messagebuilder import MessageBuilder
 from text import nonewlines
 
 # Replace these with your own values, either in environment variables or directly here
 AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT")
 AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER")
-
-
-from approaches.approach import AskApproach
-from core.messagebuilder import MessageBuilder
 
 
 class RetrieveThenReadApproach(AskApproach):

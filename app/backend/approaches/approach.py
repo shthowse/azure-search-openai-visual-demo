@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, List, Any
+from typing import Any, List, Optional
 
 
 class ChatApproach(ABC):

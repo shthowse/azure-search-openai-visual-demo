@@ -6,10 +6,6 @@ import time
 
 import aiohttp
 import openai
-from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
-from approaches.readdecomposeask import ReadDecomposeAsk
-from approaches.readretrieveread import ReadRetrieveReadApproach
-from approaches.retrievethenread import RetrieveThenReadApproach
 from azure.identity.aio import DefaultAzureCredential
 from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.search.documents.aio import SearchClient
@@ -26,6 +22,11 @@ from quart import (
     send_file,
     send_from_directory,
 )
+
+from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
+from approaches.readdecomposeask import ReadDecomposeAsk
+from approaches.readretrieveread import ReadRetrieveReadApproach
+from approaches.retrievethenread import RetrieveThenReadApproach
 
 CONFIG_OPENAI_TOKEN = "openai_token"
 CONFIG_CREDENTIAL = "azure_credential"

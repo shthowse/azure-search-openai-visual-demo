@@ -8,7 +8,7 @@ from langchain.callbacks.manager import CallbackManager, Callbacks
 from langchain.chains import LLMChain
 from langchain.llms.openai import AzureOpenAI
 
-from approaches.approach import AskApproach, ApproachResult, ThoughtStep
+from approaches.approach import ApproachResult, AskApproach, ThoughtStep
 from langchainadapters import HtmlCallbackHandler
 from lookuptool import CsvLookupTool
 from text import nonewlines

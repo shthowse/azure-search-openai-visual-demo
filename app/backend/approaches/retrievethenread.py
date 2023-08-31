@@ -5,10 +5,11 @@ from typing import Any
 
 import aiohttp
 import openai
-from approaches.approach import ApproachResult, AskApproach, ThoughtStep
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import QueryType
 from azure.storage.blob import ContainerClient
+
+from approaches.approach import ApproachResult, AskApproach, ThoughtStep
 from core.messagebuilder import MessageBuilder
 from text import nonewlines
 

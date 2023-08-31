@@ -11,7 +11,7 @@ from langchain.llms.openai import AzureOpenAI
 from langchain.prompts import BasePromptTemplate, PromptTemplate
 from langchain.tools.base import BaseTool
 
-from approaches.approach import AskApproach, ApproachResult, ThoughtStep
+from approaches.approach import ApproachResult, AskApproach, ThoughtStep
 from langchainadapters import HtmlCallbackHandler
 from text import nonewlines
 

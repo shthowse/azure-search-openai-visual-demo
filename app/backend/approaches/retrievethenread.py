@@ -6,7 +6,7 @@ from typing import Any
 import aiohttp
 import openai
 from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import QueryType
+from azure.search.documents.models import QueryType, Vector
 from azure.storage.blob import ContainerClient
 
 from approaches.approach import ApproachResult, AskApproach, ThoughtStep
@@ -102,39 +102,6 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                     print(f"Error: {response.status} - {response.text}")
                     return None
 
-    # The SDK is yet to support multi dimensional vector search
-    async def temp_search_fn_multi_vector(
-        self,
-        query_text,
-        filter=None,
-        query_type=None,
-        query_language=None,
-        query_speller=None,
-        semantic_configuration_name=None,
-        top=None,
-        query_caption=None,
-        vectors=None,
-    ):
-        endpoint = f"https://{os.environ['AZURE_SEARCH_SERVICE']}.search.windows.net/indexes/{os.environ['AZURE_SEARCH_INDEX']}/docs/search"
-        params = {"api-version": "2023-07-01-Preview"}
-        headers = {"Content-Type": "application/json", "api-key": os.environ["AZURE_SEARCH_SERVICE_KEY"]}
-        data = {
-            "search": query_text,
-            "filter": filter,
-            "queryType": query_type,
-            "queryLanguage": query_language,
-            "speller": query_speller,
-            "semanticConfiguration": semantic_configuration_name,
-            "top": top,
-            "captions": query_caption,
-            "vectors": vectors,
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(endpoint, params=params, headers=headers, json=data) as response:
-                json = await response.json()
-                return json["value"]
-
     # Place holder function. We will replace request with openai sdk when available
     async def gptv_request(self, data):
         base_url = f"https://{self.openai_gptv_deployment}.openai.azure.com/openai/deployments/{self.gptv_model}"
@@ -151,14 +118,22 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         """Format the embedding list to show the first 2 items followed by the count of the remaining items."""
         return f"[{embedding[0]}, {embedding[1]} ...+{len(embedding) - 2} more]" if len(embedding) > 2 else embedding
 
-    def trim_embeddings_in_data(self, data):
-        """Trim the embeddings in a list of data objects."""
-        for item in data:
-            if "embedding" in item:
-                item["embedding"] = self.trim_embedding(item["embedding"])
-            if "imageEmbedding" in item:
-                item["imageEmbedding"] = self.trim_embedding(item.get("imageEmbedding", []))
-        return data
+    def serialize_data(self, doc):
+        for key in ["embedding", "imageEmbedding"]:
+            if doc.get(key) is not None:
+                doc[key] = self.trim_embedding(doc[key])
+
+        if captions := doc.get("@search.captions"):
+            doc["@search.captions"] = [
+                {
+                    "text": caption.text,
+                    "highlights": caption.highlights,
+                    "additional_properties": caption.additional_properties,
+                }
+                for caption in captions
+            ]
+
+        return doc
 
     async def run(self, q: str, overrides: dict[str, Any]) -> ApproachResult:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
@@ -178,36 +153,23 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         image_query_vector = None
 
         # If retrieval mode includes vectors, compute an embeddings for the query
+        vectors = []
         if has_vector:
             if "embedding" in vector_fields:
                 text_query_vector = (await openai.Embedding.acreate(engine=self.embedding_deployment, input=q))["data"][
                     0
                 ]["embedding"]
-
+                vectors.append(Vector(value=text_query_vector, k=50, fields="embedding"))
             if "imageEmbedding" in vector_fields:
                 image_query_vector = await self.generate_image_embeddings(q)
+                vectors.append(Vector(value=image_query_vector, k=50, fields="imageEmbedding"))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
         query_text = q if has_text else None
 
-        vectors = [
-            {"value": vec, "fields": field, "k": 50}
-            for vec, field in [(text_query_vector, "embedding"), (image_query_vector, "imageEmbedding")]
-            if vec
-        ]
-
         # Use semantic ranker if requested and if retrieval mode is text or hybrid (vectors + text)
         if overrides.get("semantic_ranker") and has_text:
-            # r = self.search_client.search(query_text,
-            #                               filter=filter,
-            #                               query_type=QueryType.SEMANTIC,
-            #                               query_language="en-us",
-            #                               query_speller="lexicon",
-            #                               semantic_configuration_name="default",
-            #                               top=top,
-            #                               query_caption="extractive|highlight-false" if use_semantic_captions else None,
-            #                               vectors=vectors)
-            r = await self.temp_search_fn_multi_vector(
+            r = await self.search_client.search(
                 query_text,
                 filter=filter,
                 query_type=QueryType.SEMANTIC,
@@ -220,21 +182,20 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             )
 
         else:
-            # r = self.search_client.search(query_text,
-            #                               filter=filter,
-            #                               top=top,
-            #                               vectors=vectors)
-            r = await self.temp_search_fn_multi_vector(query_text, filter=filter, top=top, vectors=vectors)
+            r = self.search_client.search(query_text, filter=filter, top=top, vectors=vectors)
 
-        if use_semantic_captions:
-            results = [
-                (doc[self.sourcepage_field], nonewlines(" . ".join([c.text for c in doc["@search.captions"]])))
-                for doc in r
-            ]
-        else:
-            results = [(doc[self.sourcepage_field], nonewlines(doc[self.content_field])) for doc in r]
+        results = []
+        trimmed_results = []
 
-        trimmed_results = self.trim_embeddings_in_data(r)
+        async for page in r.by_page():  # Replace 'by_page' with whatever method is appropriate for your object
+            async for doc in page:
+                if use_semantic_captions:
+                    caption_text = " . ".join([c.text for c in doc["@search.captions"]])
+                    results.append((doc[self.sourcepage_field], nonewlines(caption_text)))
+                else:
+                    results.append((doc[self.sourcepage_field], nonewlines(doc[self.content_field])))
+
+                trimmed_results.append(self.serialize_data(doc))
 
         # GPT-V is yet to support chat completion.
         if use_gptv:

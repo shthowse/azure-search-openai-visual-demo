@@ -18,6 +18,7 @@ from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     HnswParameters,
+    HnswVectorSearchAlgorithmConfiguration,
     PrioritizedFields,
     SearchableField,
     SearchField,
@@ -28,7 +29,6 @@ from azure.search.documents.indexes.models import (
     SemanticSettings,
     SimpleField,
     VectorSearch,
-    VectorSearchAlgorithmConfiguration,
 )
 from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
 from PIL import Image, ImageDraw, ImageFont
@@ -421,11 +421,11 @@ def create_search_index():
             ),
             vector_search=VectorSearch(
                 algorithm_configurations=[
-                    VectorSearchAlgorithmConfiguration(
+                    HnswVectorSearchAlgorithmConfiguration(
                         name="default", kind="hnsw", hnsw_parameters=HnswParameters(metric="cosine")
                     ),
                     # TODO: Check if we need another config
-                    VectorSearchAlgorithmConfiguration(
+                    HnswVectorSearchAlgorithmConfiguration(
                         name="image-vector-config",
                         kind="hnsw",
                         hnsw_parameters={"m": 4, "efConstruction": 400, "efSearch": 1000, "metric": "cosine"},

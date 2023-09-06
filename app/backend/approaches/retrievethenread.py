@@ -182,12 +182,12 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             )
 
         else:
-            r = self.search_client.search(query_text, filter=filter, top=top, vectors=vectors)
+            r = await self.search_client.search(query_text, filter=filter, top=top, vectors=vectors)
 
         results = []
         trimmed_results = []
 
-        async for page in r.by_page():  # Replace 'by_page' with whatever method is appropriate for your object
+        async for page in r.by_page():
             async for doc in page:
                 if use_semantic_captions:
                     caption_text = " . ".join([c.text for c in doc["@search.captions"]])

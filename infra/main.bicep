@@ -29,14 +29,16 @@ param storageContainerName string = 'content'
 
 param openAiServiceName string = ''
 param openAiResourceGroupName string = ''
+param useGptV bool
+
 @description('Location for the OpenAI resource group')
-@allowed(['canadaeast', 'eastus', 'francecentral', 'japaneast', 'northcentralus'])
+@allowed(['canadaeast', 'eastus', 'switzerlandnorth', 'francecentral', 'japaneast', 'northcentralus'])
 @metadata({
   azd: {
     type: 'location'
   }
 })
-param openAiResourceGroupLocation string
+param openAiResourceGroupLocation string = 'switzerlandnorth'
 
 param openAiSkuName string = 'S0'
 
@@ -48,11 +50,15 @@ param formRecognizerSkuName string = 'S0'
 
 param chatGptDeploymentName string // Set in main.parameters.json
 param chatGptDeploymentCapacity int = 30
+param chatGptVDeploymentCapacity int = 120
 param chatGptModelName string = 'gpt-35-turbo'
 param chatGptModelVersion string = '0613'
 param embeddingDeploymentName string = 'embedding'
 param embeddingDeploymentCapacity int = 30
 param embeddingModelName string = 'text-embedding-ada-002'
+param gptvModelName string = 'gptv'
+param gptvDeploymentName string = 'gptv'
+param gptvModelVersion string = '0329'
 
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
@@ -142,6 +148,46 @@ module backend 'core/host/appservice.bicep' = {
   }
 }
 
+var defaultOpenAiDeployments = [
+  {
+    name: chatGptDeploymentName
+    model: {
+      format: 'OpenAI'
+      name: chatGptModelName
+      version: chatGptModelVersion
+    }
+    sku: {
+      name: 'Standard'
+      capacity: chatGptDeploymentCapacity
+      capacity: V
+    }
+  }
+  {
+    name: embeddingDeploymentName
+    model: {
+      format: 'OpenAI'
+      name: embeddingModelName
+      version: '2'
+    }
+    capacity: embeddingDeploymentCapacity
+  }
+]
+
+var openAiDeployments = concat(defaultOpenAiDeployments, useGptV ? [
+  {
+    name: gptvDeploymentName
+    model: {
+      format: 'OpenAI'
+      name: gptvModelName
+      version: gptvModelVersion
+    }
+    sku: {
+      name: 'Standard'
+      capacity: chatGptVDeploymentCapacity
+    }
+  }
+] : [])
+
 module openAi 'core/ai/cognitiveservices.bicep' = {
   name: 'openai'
   scope: openAiResourceGroup
@@ -152,29 +198,7 @@ module openAi 'core/ai/cognitiveservices.bicep' = {
     sku: {
       name: openAiSkuName
     }
-    deployments: [
-      {
-        name: chatGptDeploymentName
-        model: {
-          format: 'OpenAI'
-          name: chatGptModelName
-          version: chatGptModelVersion
-        }
-        sku: {
-          name: 'Standard'
-          capacity: chatGptDeploymentCapacity
-        }
-      }
-      {
-        name: embeddingDeploymentName
-        model: {
-          format: 'OpenAI'
-          name: embeddingModelName
-          version: '2'
-        }
-        capacity: embeddingDeploymentCapacity
-      }
-    ]
+    deployments: openAiDeployments
   }
 }
 
@@ -346,6 +370,7 @@ output AZURE_OPENAI_RESOURCE_GROUP string = openAiResourceGroup.name
 output AZURE_OPENAI_CHATGPT_DEPLOYMENT string = chatGptDeploymentName
 output AZURE_OPENAI_CHATGPT_MODEL string = chatGptModelName
 output AZURE_OPENAI_EMB_DEPLOYMENT string = embeddingDeploymentName
+output AZURE_OPENAI_GPTV_DEPLOYMENT string = gptvDeploymentName
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

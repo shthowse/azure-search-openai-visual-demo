@@ -8,13 +8,12 @@ MODELS_2_TOKEN_LIMITS = {
     "gpt-35-turbo-16k": 16000,
     "gpt-3.5-turbo-16k": 16000,
     "gpt-4": 8100,
-    "gpt-4-32k": 32000
+    "gpt-4-32k": 32000,
 }
 
-AOAI_2_OAI = {
-    "gpt-35-turbo": "gpt-3.5-turbo",
-    "gpt-35-turbo-16k": "gpt-3.5-turbo-16k"
-}
+EXPERIMENTAL_MODELS = ["gptv"]
+
+AOAI_2_OAI = {"gpt-35-turbo": "gpt-3.5-turbo", "gpt-35-turbo-16k": "gpt-3.5-turbo-16k"}
 
 
 def get_token_limit(model_id: str) -> int:
@@ -39,6 +38,9 @@ def num_tokens_from_messages(message: dict[str, str], model: str) -> int:
         num_tokens_from_messages(message, model)
         output: 11
     """
+    if model in EXPERIMENTAL_MODELS:
+        return 0
+
     encoding = tiktoken.encoding_for_model(get_oai_chatmodel_tiktok(model))
     num_tokens = 2  # For "role" and "content" keys
     for key, value in message.items():

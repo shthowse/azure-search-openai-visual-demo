@@ -159,7 +159,6 @@ var defaultOpenAiDeployments = [
     sku: {
       name: 'Standard'
       capacity: chatGptDeploymentCapacity
-      capacity: V
     }
   }
   {
@@ -371,6 +370,7 @@ output AZURE_OPENAI_CHATGPT_DEPLOYMENT string = chatGptDeploymentName
 output AZURE_OPENAI_CHATGPT_MODEL string = chatGptModelName
 output AZURE_OPENAI_EMB_DEPLOYMENT string = embeddingDeploymentName
 output AZURE_OPENAI_GPTV_DEPLOYMENT string = gptvDeploymentName
+output AZURE_OPENAI_GPTV_MODEL string = gptvModelName
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

@@ -1,5 +1,5 @@
+import asyncio
 import base64
-import json
 import os
 from typing import Any
 
@@ -47,12 +47,12 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
     answer = "In-network deductibles are $500 for employee and $1000 for family [info1.txt] and Overlake is in-network for the employee plan [info2.pdf][info4.pdf]."
 
     system_chat_template_gptv = (
-        "You are an intelligent assistant helping people analyze housing data and projections, the documents contain text, graphs, tables and images. "
+        "You are an intelligent assistant helping analyze the Annual Financial Report of Contoso Ltd., The documents contain text, graphs, tables and images. "
         + "Answer the following question using only the data provided in the sources below. "
         + "For tabular information return it as an html table. Do not return markdown format. "
         + "Each text source has a name followed by colon and the actual information, always include the source name for each fact you use in the response. [filename]"
-        + "The text and image source can be the same file name, don't use the image title when citing the image source, only use the file name as mentioned"
-        + "Each image source has the file name in the top left corner of the image with coordinates (10,10) pixels and is in the format SourceFileName:<file_name>, always include the file_name in the format [file_name] when a image is used"
+        + "Each image source has the file name in the top left corner of the image with coordinates (10,10) pixels and is in the format SourceFileName:<file_name>, always include the file name in the format [file_name] when a image is used "
+        + "The text and image source can be the same file name, don't use the image title when citing the image source, only use the file name as mentioned "
         + "If you cannot answer using the sources below, say you don't know. Return just the answer without any input texts"
     )
 
@@ -60,9 +60,9 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         self,
         search_client: SearchClient,
         blob_container_client: ContainerClient,
-        openai_deployment: str,
+        chatgpt_deployment: str,
         chatgpt_model: str,
-        openai_gptv_deployment: str,
+        gptv_deployment: str,
         gptv_model: str,
         embedding_deployment: str,
         sourcepage_field: str,
@@ -70,12 +70,12 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
     ):
         self.search_client = search_client
         self.blob_container_client = blob_container_client
-        self.openai_deployment = openai_deployment
+        self.chatgpt_deployment = chatgpt_deployment
         self.chatgpt_model = chatgpt_model
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
         self.content_field = content_field
-        self.openai_gptv_deployment = openai_gptv_deployment
+        self.gptv_deployment = gptv_deployment
         self.gptv_model = gptv_model
 
     async def download_blob_as_base64(self, file_path: str) -> str:
@@ -102,18 +102,6 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                     print(f"Error: {response.status} - {response.text}")
                     return None
 
-    # Place holder function. We will replace request with openai sdk when available
-    async def gptv_request(self, data):
-        base_url = f"https://{self.openai_gptv_deployment}.openai.azure.com/openai/deployments/{self.gptv_model}"
-        endpoint = f"{base_url}/rainbow?api-version=2023-03-15-preview"
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {openai.api_key}"}
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(endpoint, headers=headers, data=json.dumps(data)) as response:
-                r = await response.json()
-                combined_text = "".join(choice["text"] for choice in r["choices"])
-                return combined_text
-
     def trim_embedding(self, embedding):
         """Format the embedding list to show the first 2 items followed by the count of the remaining items."""
         return f"[{embedding[0]}, {embedding[1]} ...+{len(embedding) - 2} more]" if len(embedding) > 2 else embedding
@@ -134,6 +122,9 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             ]
 
         return doc
+
+    async def fetch_image(self, result):
+        return {"image": await self.download_blob_as_base64(result[0])}
 
     async def run(self, q: str, overrides: dict[str, Any]) -> ApproachResult:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
@@ -197,78 +188,60 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
 
                 trimmed_results.append(self.serialize_data(doc))
 
-        # GPT-V is yet to support chat completion.
+        image_list = []
+        user_content = [q]
+
+        template = overrides.get("prompt_template") or (
+            self.system_chat_template_gptv if use_gptv else self.system_chat_template
+        )
+        model = self.gptv_model if use_gptv else self.chatgpt_model
+        message_builder = MessageBuilder(template, model)
+
+        # Process results
+        sources_content = "Sources:\n" + "\n".join([": ".join(result) for result in results])
+        if include_gtpV_text and use_gptv:
+            user_content.append(sources_content)
+        if include_gtpV_images and use_gptv:
+            image_list.extend(await asyncio.gather(*(self.fetch_image(result) for result in results)))
+            user_content.extend(image_list)
+
+        # Append user message
         if use_gptv:
-            data = {
-                "transcript": [{"type": "text", "data": self.system_chat_template_gptv}, {"type": "text", "data": q}],
-                "max_tokens": 1024,
-                "temperature": overrides.get("temperature") or 0.7,
-                "n": 1,
-            }
-
-            for source, text_result in results:
-                data["transcript"].append(
-                    {"type": "text", "data": ": ".join([source, text_result])}
-                ) if include_gtpV_text else None
-                data["transcript"].append(
-                    {"type": "image", "data": await self.download_blob_as_base64(source)}
-                ) if include_gtpV_images else None
-
-            chat_content = await self.gptv_request(data)
-            result_dict = {
-                t: [item["data"] for item in data["transcript"] if item["type"] == t] for t in ["text", "image"]
-            }
-            text_results, image_results = result_dict["text"][2:], result_dict["image"]
-
-            return ApproachResult(
-                chat_content,
-                {"text": text_results, "images": image_results},
-                [
-                    ThoughtStep(
-                        "Search Query",
-                        query_text,
-                        {"vectorFields": vector_fields, "semanticCaptions": use_semantic_captions},
-                    ),
-                    ThoughtStep("Results", trimmed_results),
-                    ThoughtStep("Prompt", data["transcript"]),
-                ],
-            )
-
-        else:
-            message_builder = MessageBuilder(
-                overrides.get("prompt_template") or self.system_chat_template, self.chatgpt_model
-            )
-
-            # add user question
-            user_content = (
-                q + "\n" + "Sources:\n {content}".format(content="\n".join([": ".join(result) for result in results]))
-            )
             message_builder.append_message("user", user_content)
-
-            # Add shots/samples. This helps model to mimic response and make sure they match rules laid out in system message.
+        else:
+            user_content = q + "\n" + sources_content
+            message_builder.append_message("user", user_content)
             message_builder.append_message("assistant", self.answer)
             message_builder.append_message("user", self.question)
 
-            messages = message_builder.messages
-            chat_completion = await openai.ChatCompletion.acreate(
-                deployment_id=self.openai_deployment,
-                model=self.chatgpt_model,
-                messages=messages,
-                temperature=overrides.get("temperature") or 0.3,
-                max_tokens=1024,
-                n=1,
-            )
+        messages = message_builder.messages
 
-            return ApproachResult(
-                chat_completion.choices[0].message.content,
-                {"text": [": ".join(result) for result in results]},
-                [
-                    ThoughtStep(
-                        "Search Query",
-                        query_text,
-                        {"vectorFields": vector_fields, "semanticCaptions": use_semantic_captions},
-                    ),
-                    ThoughtStep("Results", trimmed_results),
-                    ThoughtStep("Prompt", [str(message) for message in messages]),
-                ],
-            )
+        # Chat completion
+        engine = self.gptv_deployment if use_gptv else self.chatgpt_deployment
+        temperature = overrides.get("temperature") or (0.7 if use_gptv else 0.3)
+
+        chat_completion = await openai.ChatCompletion.acreate(
+            engine=engine,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=1024,
+            n=1,
+        )
+
+        data_points = {"text": [": ".join(result) for result in results]}
+        if use_gptv:
+            data_points["images"] = [d["image"] for d in image_list]
+
+        return ApproachResult(
+            chat_completion.choices[0].message.content,
+            data_points,
+            [
+                ThoughtStep(
+                    "Search Query",
+                    query_text,
+                    {"vectorFields": vector_fields, "semanticCaptions": use_semantic_captions},
+                ),
+                ThoughtStep("Results", trimmed_results),
+                ThoughtStep("Prompt", [str(message) for message in messages]),
+            ],
+        )

@@ -132,10 +132,8 @@ async def setup_clients():
     AZURE_OPENAI_CHATGPT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHATGPT_DEPLOYMENT")
     AZURE_OPENAI_CHATGPT_MODEL = os.getenv("AZURE_OPENAI_CHATGPT_MODEL")
     AZURE_OPENAI_EMB_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMB_DEPLOYMENT")
-    AZURE_OPENAI_GPTV_DEPLOYMENT = (
-        os.environ.get("AZURE_OPENAI_GPTV_DEPLOYMENT") or "gpt-visual-swn"
-    )  # "gpt-visual-tip" #"gpt-visual-api"
-    AZURE_OPENAI_GPTV_MODEL = os.environ.get("AZURE_OPENAI_GPTV_MODEL") or "gpt-visual"
+    AZURE_OPENAI_GPTV_DEPLOYMENT = os.environ.get("AZURE_OPENAI_GPTV_DEPLOYMENT")
+    AZURE_OPENAI_GPTV_MODEL = os.environ.get("AZURE_OPENAI_GPTV_MODEL")
 
     KB_FIELDS_CONTENT = os.getenv("KB_FIELDS_CONTENT", "content")
     KB_FIELDS_SOURCEPAGE = os.getenv("KB_FIELDS_SOURCEPAGE", "sourcepage")
@@ -159,7 +157,7 @@ async def setup_clients():
 
     # Used by the OpenAI SDK
     openai.api_base = f"https://{AZURE_OPENAI_SERVICE}.openai.azure.com"
-    openai.api_version = "2023-05-15"
+    openai.api_version = "2023-07-01-preview"
     openai.api_type = "azure_ad"
     openai_token = await azure_credential.get_token("https://cognitiveservices.azure.com/.default")
     openai.api_key = openai_token.token

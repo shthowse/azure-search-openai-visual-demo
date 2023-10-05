@@ -16,14 +16,13 @@ const EXAMPLES: ExampleModel[] = [
     // { text: "What happens in a performance review?", value: "What happens in a performance review?"},
     // { text: "What does a Product Manager do?", value: "What does a Product Manager do?"},
 
-    // Real Estate data examples
-    { text: "Which was the most valuable interior remodeling?", value: "Which was the most valuable interior remodeling?" },
-    { text: "Which years did the housing market take a hit?", value: "Which years did the housing market take a hit?" },
+    // Financial data examples
+    { text: "Which product generated the highest revenue?", value: "Which product generated the highest revenue?" },
+    { text: "Which lowest performing department", value: "Which lowest performing department" },
     {
-        text: "What's Redfin's opinion about home-flippers in Jun-2022",
-        value: "What's Redfin's opinion about home-flippers in Jun-2022"
-    },
-    { text: "Which state had biggest change in inventory levels?", value: "Which state had biggest change in inventory levels?" }
+        text: "What can you say about Departmental Interactions and Budget Allocation",
+        value: "What can you say about Departmental Interactions and Budget Allocation"
+    }
 ];
 
 interface Props {

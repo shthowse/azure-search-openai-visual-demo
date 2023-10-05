@@ -1,15 +1,15 @@
 import asyncio
-import base64
 import os
 from typing import Any
 
-import aiohttp
 import openai
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import QueryType, Vector
 from azure.storage.blob import ContainerClient
 
 from approaches.approach import ApproachResult, AskApproach, ThoughtStep
+from core.embeddingshelper import generate_image_embeddings, serialize_data
+from core.imageshelper import fetch_image
 from core.messagebuilder import MessageBuilder
 from text import nonewlines
 
@@ -78,54 +78,6 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         self.gptv_deployment = gptv_deployment
         self.gptv_model = gptv_model
 
-    async def download_blob_as_base64(self, file_path: str) -> str:
-        base_name, _ = os.path.splitext(file_path)
-        blob = await self.blob_container_client.get_blob_client(base_name + ".png").download_blob()
-
-        if not blob.properties or not blob.properties.has_key("content_settings"):
-            return
-        return base64.b64encode(await blob.readall()).decode("utf-8")
-
-    async def generate_image_embeddings(self, text):
-        endpoint = f"{os.environ['VISION_ENDPOINT']}/computervision/retrieval:vectorizeText"
-
-        params = {"api-version": "2023-02-01-preview"}
-        headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": os.environ["VISION_KEY"]}
-        data = {"text": text}
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(endpoint, params=params, headers=headers, json=data) as response:
-                if response.status == 200:
-                    json = await response.json()
-                    return json["vector"]
-                else:
-                    print(f"Error: {response.status} - {response.text}")
-                    return None
-
-    def trim_embedding(self, embedding):
-        """Format the embedding list to show the first 2 items followed by the count of the remaining items."""
-        return f"[{embedding[0]}, {embedding[1]} ...+{len(embedding) - 2} more]" if len(embedding) > 2 else embedding
-
-    def serialize_data(self, doc):
-        for key in ["embedding", "imageEmbedding"]:
-            if doc.get(key) is not None:
-                doc[key] = self.trim_embedding(doc[key])
-
-        if captions := doc.get("@search.captions"):
-            doc["@search.captions"] = [
-                {
-                    "text": caption.text,
-                    "highlights": caption.highlights,
-                    "additional_properties": caption.additional_properties,
-                }
-                for caption in captions
-            ]
-
-        return doc
-
-    async def fetch_image(self, result):
-        return {"image": await self.download_blob_as_base64(result[0])}
-
     async def run(self, q: str, overrides: dict[str, Any]) -> ApproachResult:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
@@ -152,7 +104,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                 ]["embedding"]
                 vectors.append(Vector(value=text_query_vector, k=50, fields="embedding"))
             if "imageEmbedding" in vector_fields:
-                image_query_vector = await self.generate_image_embeddings(q)
+                image_query_vector = await generate_image_embeddings(q)
                 vectors.append(Vector(value=image_query_vector, k=50, fields="imageEmbedding"))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
@@ -186,7 +138,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                 else:
                     results.append((doc[self.sourcepage_field], nonewlines(doc[self.content_field])))
 
-                trimmed_results.append(self.serialize_data(doc))
+                trimmed_results.append(serialize_data(doc))
 
         image_list = []
         user_content = [q]
@@ -202,7 +154,9 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         if include_gtpV_text and use_gptv:
             user_content.append(sources_content)
         if include_gtpV_images and use_gptv:
-            image_list.extend(await asyncio.gather(*(self.fetch_image(result) for result in results)))
+            image_list.extend(
+                await asyncio.gather(*(fetch_image(self.blob_container_client, result) for result in results))
+            )
             user_content.extend(image_list)
 
         # Append user message
@@ -239,7 +193,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                 ThoughtStep(
                     "Search Query",
                     query_text,
-                    {"vectorFields": vector_fields, "semanticCaptions": use_semantic_captions},
+                    {"vectorFields": vector_fields if has_vector else [], "semanticCaptions": use_semantic_captions},
                 ),
                 ThoughtStep("Results", trimmed_results),
                 ThoughtStep("Prompt", [str(message) for message in messages]),

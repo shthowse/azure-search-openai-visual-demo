@@ -1,10 +1,14 @@
+import asyncio
 from typing import Any
 
 import openai
 from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import QueryType
+from azure.search.documents.models import QueryType, Vector
+from azure.storage.blob import ContainerClient
 
 from approaches.approach import ApproachResult, ChatApproach, ThoughtStep
+from core.embeddingshelper import generate_image_embeddings, serialize_data
+from core.imageshelper import fetch_image
 from core.messagebuilder import MessageBuilder
 from core.modelhelper import get_token_limit
 from text import nonewlines
@@ -28,7 +32,7 @@ Each source has a name followed by colon and the actual information, always incl
 {follow_up_questions_prompt}
 {injected_prompt}
 """
-    follow_up_questions_prompt_content = """Generate three very brief follow-up questions that the user would likely ask next about their healthcare plan and employee handbook.
+    follow_up_questions_prompt_content = """Generate three very brief follow-up questions that the user would likely ask next about their specific data.
 Use double angle brackets to reference the questions, e.g. <<Are there exclusions for prescriptions?>>.
 Try not to repeat questions that have already been asked.
 Only generate questions and do not generate any text before or after the questions, such as 'Next Questions'"""
@@ -51,14 +55,20 @@ If you cannot generate a search query, return just the number 0.
     def __init__(
         self,
         search_client: SearchClient,
+        blob_container_client: ContainerClient,
         chatgpt_deployment: str,
         chatgpt_model: str,
+        gptv_deployment: str,
+        gptv_model: str,
         embedding_deployment: str,
         sourcepage_field: str,
         content_field: str,
     ):
         self.search_client = search_client
+        self.blob_container_client = blob_container_client
         self.chatgpt_deployment = chatgpt_deployment
+        self.gptv_deployment = gptv_deployment
+        self.gptv_model = gptv_model
         self.chatgpt_model = chatgpt_model
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
@@ -68,9 +78,15 @@ If you cannot generate a search query, return just the number 0.
     async def run(self, history: list[dict[str, str]], overrides: dict[str, Any]) -> Any:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
+        vector_fields = overrides.get("vector_fields") or []
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top") or 3
         exclude_category = overrides.get("exclude_category") or None
+        use_gptv = overrides.get("use_gptv")
+
+        include_gtpV_text = overrides.get("gptv_input") in ["textAndImages", "texts", None]
+        include_gtpV_images = overrides.get("gptv_input") in ["textAndImages", "images", None]
+
         filter = "category ne '{}'".format(exclude_category.replace("'", "''")) if exclude_category else None
 
         user_q = "Generate search query for: " + history[-1]["user"]
@@ -86,8 +102,7 @@ If you cannot generate a search query, return just the number 0.
         )
 
         chat_completion = await openai.ChatCompletion.acreate(
-            deployment_id=self.chatgpt_deployment,
-            model=self.chatgpt_model,
+            engine=self.chatgpt_deployment,
             messages=messages,
             temperature=0.0,
             max_tokens=32,
@@ -101,12 +116,16 @@ If you cannot generate a search query, return just the number 0.
         # STEP 2: Retrieve relevant documents from the search index with the GPT optimized query
 
         # If retrieval mode includes vectors, compute an embedding for the query
+        vectors = []
         if has_vector:
-            query_vector = (await openai.Embedding.acreate(engine=self.embedding_deployment, input=query_text))["data"][
-                0
-            ]["embedding"]
-        else:
-            query_vector = None
+            if "embedding" in vector_fields:
+                text_query_vector = (
+                    await openai.Embedding.acreate(engine=self.embedding_deployment, input=query_text)
+                )["data"][0]["embedding"]
+                vectors.append(Vector(value=text_query_vector, k=50, fields="embedding"))
+            if "imageEmbedding" in vector_fields:
+                image_query_vector = await generate_image_embeddings(query_text)
+                vectors.append(Vector(value=image_query_vector, k=50, fields="imageEmbedding"))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
         if not has_text:
@@ -123,18 +142,14 @@ If you cannot generate a search query, return just the number 0.
                 semantic_configuration_name="default",
                 top=top,
                 query_caption="extractive|highlight-false" if use_semantic_captions else None,
-                vector=query_vector,
-                top_k=50 if query_vector else None,
-                vector_fields="embedding" if query_vector else None,
+                vectors=vectors,
             )
         else:
             r = await self.search_client.search(
                 query_text,
                 filter=filter,
                 top=top,
-                vector=query_vector,
-                top_k=50 if query_vector else None,
-                vector_fields="embedding" if query_vector else None,
+                vectors=vectors,
             )
         if use_semantic_captions:
             results = [
@@ -143,14 +158,24 @@ If you cannot generate a search query, return just the number 0.
             ]
         else:
             results = [doc[self.sourcepage_field] + ": " + nonewlines(doc[self.content_field]) async for doc in r]
-        content = "\n".join(results)
 
+        results = []
+        trimmed_results = []
+
+        async for page in r.by_page():
+            async for doc in page:
+                if use_semantic_captions:
+                    caption_text = " . ".join([c.text for c in doc["@search.captions"]])
+                    results.append((doc[self.sourcepage_field], nonewlines(caption_text)))
+                else:
+                    results.append((doc[self.sourcepage_field], nonewlines(doc[self.content_field])))
+
+                trimmed_results.append(serialize_data(doc))
+
+        # STEP 3: Generate a contextual and content specific answer using the search results and chat history
         follow_up_questions_prompt = (
             self.follow_up_questions_prompt_content if overrides.get("suggest_followup_questions") else ""
         )
-
-        # STEP 3: Generate a contextual and content specific answer using the search results and chat history
-
         # Allow client to replace the entire prompt, or to inject into the exiting prompt using >>>
         prompt_override = overrides.get("prompt_override")
         if prompt_override is None:
@@ -164,19 +189,33 @@ If you cannot generate a search query, return just the number 0.
         else:
             system_message = prompt_override.format(follow_up_questions_prompt=follow_up_questions_prompt)
 
+        engine = self.gptv_deployment if use_gptv else self.chatgpt_deployment
+        model = self.chatgpt_model if use_gptv else self.chatgpt_model
+
+        sources_content = " Sources:\n" + "\n".join([": ".join(result) for result in results])
+        user_conv = [history[-1]["user"]]
+        image_list = []
+
+        if include_gtpV_text:
+            user_conv = [history[-1]["user"] + sources_content]
+            # Model does not handle lengthy system messages well. Moving sources to latest user conversation to solve follow up questions prompt.
+
+        if include_gtpV_images and use_gptv:
+            image_list.extend(
+                await asyncio.gather(*(fetch_image(self.blob_container_client, result) for result in results))
+            )
+            user_conv.extend(image_list)
+
         messages = self.get_messages_from_history(
             system_message,
-            self.chatgpt_model,
+            model,
             history,
-            history[-1]["user"]
-            + "\n\nSources:\n"
-            + content,  # Model does not handle lengthy system messages well. Moving sources to latest user conversation to solve follow up questions prompt.
+            user_conv,
             max_tokens=self.chatgpt_token_limit,
         )
 
         chat_completion = await openai.ChatCompletion.acreate(
-            deployment_id=self.chatgpt_deployment,
-            model=self.chatgpt_model,
+            engine=engine,
             messages=messages,
             temperature=overrides.get("temperature") or 0.7,
             max_tokens=1024,
@@ -187,10 +226,21 @@ If you cannot generate a search query, return just the number 0.
 
         msg_to_display = "\n\n".join([str(message) for message in messages])
 
+        data_points = {"text": [": ".join(result) for result in results]}
+        if use_gptv:
+            data_points["images"] = [d["image"] for d in image_list]
+
         return ApproachResult(
             chat_content,
-            results,
-            [ThoughtStep("Searched for", query_text), ThoughtStep("Conversations", msg_to_display.split("\n"))],
+            data_points,
+            [
+                ThoughtStep(
+                    "Search Query",
+                    query_text,
+                    {"vectorFields": vector_fields if has_vector else [], "semanticCaptions": use_semantic_captions},
+                ),
+                ThoughtStep("Conversations", msg_to_display.split("\n")),
+            ],
         )
 
     def get_messages_from_history(

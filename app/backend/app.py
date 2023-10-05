@@ -199,8 +199,11 @@ async def setup_clients():
     current_app.config[CONFIG_CHAT_APPROACHES] = {
         "rrr": ChatReadRetrieveReadApproach(
             search_client,
+            blob_container_client,
             AZURE_OPENAI_CHATGPT_DEPLOYMENT,
             AZURE_OPENAI_CHATGPT_MODEL,
+            AZURE_OPENAI_GPTV_DEPLOYMENT,
+            AZURE_OPENAI_GPTV_MODEL,
             AZURE_OPENAI_EMB_DEPLOYMENT,
             KB_FIELDS_SOURCEPAGE,
             KB_FIELDS_CONTENT,

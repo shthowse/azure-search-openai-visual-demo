@@ -44,7 +44,12 @@ def num_tokens_from_messages(message: dict[str, str], model: str) -> int:
     encoding = tiktoken.encoding_for_model(get_oai_chatmodel_tiktok(model))
     num_tokens = 2  # For "role" and "content" keys
     for key, value in message.items():
-        num_tokens += len(encoding.encode(value))
+        if isinstance(value, list):
+            for v in value:
+                if isinstance(v, str):  # Its yet to be known how GPTV tokens are calculated for images.
+                    num_tokens += len(encoding.encode(v))
+        else:
+            num_tokens += len(encoding.encode(value))
     return num_tokens
 
 

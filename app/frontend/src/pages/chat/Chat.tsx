@@ -1,10 +1,10 @@
 import { useRef, useState, useEffect } from "react";
-import { Checkbox, Panel, DefaultButton, TextField, SpinButton, Dropdown, IDropdownOption } from "@fluentui/react";
+import { Checkbox, Panel, DefaultButton, TextField, SpinButton, Dropdown, IDropdownOption, ChoiceGroup, IChoiceGroupOption } from "@fluentui/react";
 import { SparkleFilled } from "@fluentui/react-icons";
 
 import styles from "./Chat.module.css";
 
-import { chatApi, RetrievalMode, Approaches, AskResponse, ChatRequest, ChatTurn } from "../../api";
+import { chatApi, RetrievalMode, Approaches, AskResponse, ChatRequest, ChatTurn, VectorFieldOptions, GPTVInput } from "../../api";
 import { Answer, AnswerError, AnswerLoading } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
@@ -12,6 +12,8 @@ import { UserChatMessage } from "../../components/UserChatMessage";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
 import { SettingsButton } from "../../components/SettingsButton";
 import { ClearChatButton } from "../../components/ClearChatButton";
+import { VectorSettings } from "../../components/VectorSettings";
+import { GPTvSettings } from "../../components/GPTvSettings";
 
 const Chat = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
@@ -22,6 +24,9 @@ const Chat = () => {
     const [useSemanticCaptions, setUseSemanticCaptions] = useState<boolean>(false);
     const [excludeCategory, setExcludeCategory] = useState<string>("");
     const [useSuggestFollowupQuestions, setUseSuggestFollowupQuestions] = useState<boolean>(false);
+    const [vectorFieldList, setVectorFieldList] = useState<VectorFieldOptions[]>([VectorFieldOptions.Embedding]);
+    const [useGPTV, setUseGPTV] = useState<boolean>(false);
+    const [gptVInput, setGptVInput] = useState<GPTVInput>(GPTVInput.TextAndImages);
 
     const lastQuestionRef = useRef<string>("");
     const chatMessageStreamEnd = useRef<HTMLDivElement | null>(null);
@@ -55,6 +60,9 @@ const Chat = () => {
                     retrievalMode: retrievalMode,
                     semanticRanker: useSemanticRanker,
                     semanticCaptions: useSemanticCaptions,
+                    vectorFields: vectorFieldList,
+                    useGPTv: useGPTV,
+                    gptVInput: gptVInput,
                     suggestFollowupQuestions: useSuggestFollowupQuestions
                 }
             };
@@ -83,10 +91,6 @@ const Chat = () => {
 
     const onRetrieveCountChange = (_ev?: React.SyntheticEvent<HTMLElement, Event>, newValue?: string) => {
         setRetrieveCount(parseInt(newValue || "3"));
-    };
-
-    const onRetrievalModeChange = (_ev: React.FormEvent<HTMLDivElement>, option?: IDropdownOption<RetrievalMode> | undefined, index?: number | undefined) => {
-        setRetrievalMode(option?.data || RetrievalMode.Hybrid);
     };
 
     const onUseSemanticRankerChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
@@ -251,16 +255,18 @@ const Chat = () => {
                         label="Suggest follow-up questions"
                         onChange={onUseSuggestFollowupQuestionsChange}
                     />
-                    <Dropdown
-                        className={styles.chatSettingsSeparator}
-                        label="Retrieval mode"
-                        options={[
-                            { key: "hybrid", text: "Vectors + Text (Hybrid)", selected: retrievalMode == RetrievalMode.Hybrid, data: RetrievalMode.Hybrid },
-                            { key: "vectors", text: "Vectors", selected: retrievalMode == RetrievalMode.Vectors, data: RetrievalMode.Vectors },
-                            { key: "text", text: "Text", selected: retrievalMode == RetrievalMode.Text, data: RetrievalMode.Text }
-                        ]}
-                        required
-                        onChange={onRetrievalModeChange}
+
+                    <GPTvSettings
+                        updateUseGPTv={useGPTv => {
+                            setUseGPTV(useGPTv);
+                        }}
+                        updateGPTvInputs={inputs => setGptVInput(inputs)}
+                    />
+
+                    <VectorSettings
+                        showImageOptions={useGPTV}
+                        updateVectorFields={(options: VectorFieldOptions[]) => setVectorFieldList(options)}
+                        updateRetrievalMode={(retrievalMode: RetrievalMode) => setRetrievalMode(retrievalMode)}
                     />
                 </Panel>
             </div>

@@ -9,6 +9,8 @@ import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
 import { SettingsButton } from "../../components/SettingsButton/SettingsButton";
+import { VectorSettings } from "../../components/VectorSettings";
+import { GPTvSettings } from "../../components/GPTvSettings";
 
 const modelOptions: IChoiceGroupOption[] = [
     {
@@ -37,9 +39,9 @@ export function Component(): JSX.Element {
     const [useSemanticCaptions, setUseSemanticCaptions] = useState<boolean>(false);
     const [useGPTV, setUseGPTV] = useState<boolean>(false);
     const [gptVInput, setGptVInput] = useState<GPTVInput>(GPTVInput.TextAndImages);
-    const [vectorFieldList, setVectorFieldList] = useState<VectorFieldOptions[]>([]);
     const [excludeCategory, setExcludeCategory] = useState<string>("");
     const [question, setQuestion] = useState<string>("");
+    const [vectorFieldList, setVectorFieldList] = useState<VectorFieldOptions[]>([VectorFieldOptions.Embedding, VectorFieldOptions.ImageEmbedding]);
 
     const lastQuestionRef = useRef<string>("");
 
@@ -101,14 +103,6 @@ export function Component(): JSX.Element {
         setRetrieveCount(parseInt(newValue || "3"));
     };
 
-    const onRetrievalModeChange = (_ev: React.FormEvent<HTMLDivElement>, option?: IDropdownOption<RetrievalMode> | undefined, index?: number | undefined) => {
-        setRetrievalMode(option?.data || RetrievalMode.Hybrid);
-    };
-
-    const onSetGptVInput = (_ev: React.FormEvent<HTMLDivElement>, option?: IDropdownOption<GPTVInput> | undefined) => {
-        setGptVInput(option?.data || GPTVInput.TextAndImages);
-    };
-
     const onApproachChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, option?: IChoiceGroupOption) => {
         setApproach((option?.key as Approaches) || Approaches.RetrieveThenRead);
     };
@@ -132,15 +126,6 @@ export function Component(): JSX.Element {
 
     const onUseGPTv = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
         setUseGPTV(!!checked);
-        setVectorFieldList([VectorFieldOptions.Embedding, VectorFieldOptions.ImageEmbedding]);
-    };
-
-    const onVectorFieldsChange = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, option?: IChoiceGroupOption) => {
-        if (option?.key === "both") {
-            setVectorFieldList([VectorFieldOptions.Embedding, VectorFieldOptions.ImageEmbedding]);
-        } else {
-            setVectorFieldList([option?.key as VectorFieldOptions]);
-        }
     };
 
     const onShowCitation = (citation: string) => {
@@ -172,21 +157,6 @@ export function Component(): JSX.Element {
         {
             key: Approaches.ReadDecomposeAsk,
             text: "Read-Decompose-Ask"
-        }
-    ];
-
-    const vectorFields: IChoiceGroupOption[] = [
-        {
-            key: VectorFieldOptions.Embedding,
-            text: "Text Embeddings"
-        },
-        {
-            key: VectorFieldOptions.ImageEmbedding,
-            text: "Image Embeddings"
-        },
-        {
-            key: VectorFieldOptions.Both,
-            text: "Text and Image embeddings"
         }
     ];
 
@@ -250,7 +220,6 @@ export function Component(): JSX.Element {
                     defaultSelectedKey={approach}
                     onChange={onApproachChange}
                 />
-
                 {(approach === Approaches.RetrieveThenRead || approach === Approaches.ReadDecomposeAsk) && (
                     <TextField
                         className={styles.oneshotSettingsSeparator}
@@ -261,7 +230,6 @@ export function Component(): JSX.Element {
                         onChange={onPromptTemplateChange}
                     />
                 )}
-
                 {approach === Approaches.ReadRetrieveRead && (
                     <>
                         <TextField
@@ -282,7 +250,6 @@ export function Component(): JSX.Element {
                         />
                     </>
                 )}
-
                 <SpinButton
                     className={styles.oneshotSettingsSeparator}
                     label="Retrieve this many documents from search:"
@@ -305,49 +272,20 @@ export function Component(): JSX.Element {
                     onChange={onUseSemanticCaptionsChange}
                     disabled={!useSemanticRanker}
                 />
-
                 {approach === Approaches.RetrieveThenRead && (
-                    <Checkbox className={styles.oneshotSettingsSeparator} checked={useGPTV} label="Use GPT-V" onChange={onUseGPTv} />
-                )}
-                {useGPTV && (
-                    <Dropdown
-                        className={styles.oneshotSettingsSeparator}
-                        label="GPTV Inputs"
-                        options={[
-                            {
-                                key: GPTVInput.TextAndImages,
-                                text: "Images and text from index",
-                                selected: gptVInput == GPTVInput.TextAndImages,
-                                data: GPTVInput.TextAndImages
-                            },
-                            { key: "images", text: "Images only", selected: gptVInput == GPTVInput.Images, data: GPTVInput.Images },
-                            { key: "text", text: "Text only", selected: gptVInput == GPTVInput.Texts, data: GPTVInput.Texts }
-                        ]}
-                        required
-                        onChange={onSetGptVInput}
+                    <GPTvSettings
+                        updateUseGPTv={useGPTv => {
+                            setUseGPTV(useGPTv);
+                        }}
+                        updateGPTvInputs={inputs => setGptVInput(inputs)}
                     />
                 )}
 
-                <Dropdown
-                    className={styles.oneshotSettingsSeparator}
-                    label="Retrieval mode"
-                    options={[
-                        { key: "hybrid", text: "Vectors + Text (Hybrid)", selected: retrievalMode == RetrievalMode.Hybrid, data: RetrievalMode.Hybrid },
-                        { key: "vectors", text: "Vectors", selected: retrievalMode == RetrievalMode.Vectors, data: RetrievalMode.Vectors },
-                        { key: "text", text: "Text", selected: retrievalMode == RetrievalMode.Text, data: RetrievalMode.Text }
-                    ]}
-                    required
-                    onChange={onRetrievalModeChange}
+                <VectorSettings
+                    showImageOptions={useGPTV}
+                    updateVectorFields={(options: VectorFieldOptions[]) => setVectorFieldList(options)}
+                    updateRetrievalMode={(retrievalMode: RetrievalMode) => setRetrievalMode(retrievalMode)}
                 />
-
-                {approach === Approaches.RetrieveThenRead && [RetrievalMode.Vectors, RetrievalMode.Hybrid].includes(retrievalMode) && useGPTV && (
-                    <ChoiceGroup
-                        defaultSelectedKey={VectorFieldOptions.Both}
-                        options={vectorFields}
-                        onChange={onVectorFieldsChange}
-                        label="Vector Fields (Multi-query vector search)"
-                    />
-                )}
             </Panel>
         </div>
     );

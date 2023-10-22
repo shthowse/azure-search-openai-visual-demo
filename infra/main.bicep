@@ -31,6 +31,13 @@ param openAiServiceName string = ''
 param openAiResourceGroupName string = ''
 param useGptV bool
 
+param keyVaultName string = ''
+param keyVaultResourceGroupName string = ''
+param keyVaultResourceGroupLocation string = location
+
+param computerVisionSecretName string = 'computerVisionSecret'
+
+
 @description('Location for the OpenAI resource group')
 @allowed(['canadaeast', 'eastus', 'switzerlandnorth', 'francecentral', 'japaneast', 'northcentralus'])
 @metadata({
@@ -45,12 +52,16 @@ param openAiSkuName string = 'S0'
 param formRecognizerServiceName string = ''
 param formRecognizerResourceGroupName string = ''
 param formRecognizerResourceGroupLocation string = location
-
 param formRecognizerSkuName string = 'S0'
+
+param computerVisionServiceName string = ''
+param computerVisionResourceGroupName string = ''
+param computerVisionResourceGroupLocation string = location
+param computerVisionSkuName string = 'S1'
 
 param chatGptDeploymentName string // Set in main.parameters.json
 param chatGptDeploymentCapacity int = 30
-param chatGptVDeploymentCapacity int = 120
+param chatGptVDeploymentCapacity int = 30
 param chatGptModelName string = 'gpt-35-turbo'
 param chatGptModelVersion string = '0613'
 param embeddingDeploymentName string = 'embedding'
@@ -69,6 +80,7 @@ param useApplicationInsights bool = false
 var abbrs = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
+var computerVisionName = !empty(computerVisionServiceName) ? computerVisionServiceName : '${abbrs.cognitiveServicesComputerVision}${resourceToken}'
 
 // Organize resources in a resource group
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -85,12 +97,21 @@ resource formRecognizerResourceGroup 'Microsoft.Resources/resourceGroups@2021-04
   name: !empty(formRecognizerResourceGroupName) ? formRecognizerResourceGroupName : resourceGroup.name
 }
 
+
+resource computerVisionResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(computerVisionResourceGroupName)) {
+  name: !empty(computerVisionResourceGroupName) ? computerVisionResourceGroupName : resourceGroup.name
+}
+
 resource searchServiceResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(searchServiceResourceGroupName)) {
   name: !empty(searchServiceResourceGroupName) ? searchServiceResourceGroupName : resourceGroup.name
 }
 
 resource storageResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(storageResourceGroupName)) {
   name: !empty(storageResourceGroupName) ? storageResourceGroupName : resourceGroup.name
+}
+
+resource keyVaultResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(keyVaultResourceGroupName)) {
+  name: !empty(keyVaultResourceGroupName) ? keyVaultResourceGroupName : resourceGroup.name
 }
 
 // Monitor application with Azure Monitor
@@ -143,6 +164,9 @@ module backend 'core/host/appservice.bicep' = {
       AZURE_OPENAI_CHATGPT_DEPLOYMENT: chatGptDeploymentName
       AZURE_OPENAI_CHATGPT_MODEL: chatGptModelName
       AZURE_OPENAI_EMB_DEPLOYMENT: embeddingDeploymentName
+      AZURE_OPENAI_GPTV_DEPLOYMENT: gptvDeploymentName
+      AZURE_OPENAI_GPTV_MODEL:gptvModelName
+      AZURE_COMPUTER_VISION_ENDPOINT: computerVision.outputs.endpoint
       APPLICATIONINSIGHTS_CONNECTION_STRING: useApplicationInsights ? monitoring.outputs.applicationInsightsConnectionString : ''
     }
   }
@@ -215,6 +239,21 @@ module formRecognizer 'core/ai/cognitiveservices.bicep' = {
   }
 }
 
+
+module computerVision 'core/ai/cognitiveservices.bicep' = {
+  name: 'computerVision'
+  scope: computerVisionResourceGroup
+  params: {
+    name: computerVisionName
+    kind: 'ComputerVision'
+    location: computerVisionResourceGroupLocation
+    tags: tags
+    sku: {
+      name: computerVisionSkuName
+    }
+  }
+}
+
 module searchService 'core/search/search-services.bicep' = {
   name: 'search-service'
   scope: searchServiceResourceGroup
@@ -255,6 +294,24 @@ module storage 'core/storage/storage-account.bicep' = {
         publicAccess: 'None'
       }
     ]
+  }
+}
+
+
+resource computerVisionResource 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
+  name: computerVisionName
+  scope: computerVisionResourceGroup
+}
+
+module keyvault 'core/security/key-vault.bicep' = {
+  name: 'keyvault'
+  scope: keyVaultResourceGroup
+  params: {
+    name: !empty(keyVaultName) ? keyVaultName : '${abbrs.keyVaultVaults}${resourceToken}'
+    location: keyVaultResourceGroupLocation
+    secret: computerVisionResource.listKeys().key1
+    secretName: computerVisionSecretName
+    principalId:principalId
   }
 }
 
@@ -329,6 +386,17 @@ module searchSvcContribRoleUser 'core/security/role.bicep' = {
   }
 }
 
+module keyVaultRole 'core/security/role.bicep' = {
+  scope: keyVaultResourceGroup
+  name: 'key-vault-role-backend'
+  params: {
+    principalId: principalId
+    roleDefinitionId: '00482a5a-887f-4fb3-b363-3b7fe8e74483'
+    principalType: 'User'
+  }
+}
+
+
 // SYSTEM IDENTITIES
 module openAiRoleBackend 'core/security/role.bicep' = {
   scope: openAiResourceGroup
@@ -371,6 +439,10 @@ output AZURE_OPENAI_CHATGPT_MODEL string = chatGptModelName
 output AZURE_OPENAI_EMB_DEPLOYMENT string = embeddingDeploymentName
 output AZURE_OPENAI_GPTV_DEPLOYMENT string = gptvDeploymentName
 output AZURE_OPENAI_GPTV_MODEL string = gptvModelName
+
+output AZURE_COMPUTER_VISION_ENDPOINT string = computerVision.outputs.endpoint
+output AZURE_COMPUTER_VISION_SECRET_NAME string = keyvault.outputs.secretName
+output AZURE_KEY_VAULT_NAME string = keyvault.outputs.name
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

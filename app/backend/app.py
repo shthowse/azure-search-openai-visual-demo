@@ -8,6 +8,7 @@ import aiohttp
 import openai
 from azure.identity.aio import DefaultAzureCredential
 from azure.monitor.opentelemetry import configure_azure_monitor
+from azure.keyvault.secrets.aio import SecretClient
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import BlobServiceClient
 from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
@@ -30,6 +31,7 @@ from approaches.retrievethenread import RetrieveThenReadApproach
 
 CONFIG_OPENAI_TOKEN = "openai_token"
 CONFIG_CREDENTIAL = "azure_credential"
+CONFIG_VISION_KEY = "vision_key"
 CONFIG_ASK_APPROACHES = "ask_approaches"
 CONFIG_CHAT_APPROACHES = "chat_approaches"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
@@ -134,15 +136,18 @@ async def setup_clients():
     AZURE_OPENAI_EMB_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMB_DEPLOYMENT")
     AZURE_OPENAI_GPTV_DEPLOYMENT = os.environ.get("AZURE_OPENAI_GPTV_DEPLOYMENT")
     AZURE_OPENAI_GPTV_MODEL = os.environ.get("AZURE_OPENAI_GPTV_MODEL")
-
+    VISION_SECRET_NAME = os.environ.get("AZURE_COMPUTER_VISION_SECRET_NAME")
+    
     KB_FIELDS_CONTENT = os.getenv("KB_FIELDS_CONTENT", "content")
     KB_FIELDS_SOURCEPAGE = os.getenv("KB_FIELDS_SOURCEPAGE", "sourcepage")
 
+    keyVaultName = os.environ["AZURE_KEY_VAULT_NAME"]
+ 
     # Use the current user identity to authenticate with Azure OpenAI, Cognitive Search and Blob Storage (no secrets needed,
     # just use 'az login' locally, and managed identity when deployed on Azure). If you need to use keys, use separate AzureKeyCredential instances with the
     # keys for each service
     # If you encounter a blocking error during a DefaultAzureCredential resolution, you can exclude the problematic credential by using a parameter (ex. exclude_shared_token_cache_credential=True)
-    azure_credential = DefaultAzureCredential(exclude_shared_token_cache_credential=True)
+    azure_credential = DefaultAzureCredential(exclude_shared_token_cache_credential=False)
 
     # Set up clients for Cognitive Search and Storage
     search_client = SearchClient(
@@ -155,6 +160,9 @@ async def setup_clients():
     )
     blob_container_client = blob_client.get_container_client(AZURE_STORAGE_CONTAINER)
 
+    key_vault_client = SecretClient(vault_url=f"https://{keyVaultName}.vault.azure.net", credential=azure_credential)
+    vision_secret = await key_vault_client.get_secret(VISION_SECRET_NAME)
+
     # Used by the OpenAI SDK
     openai.api_base = f"https://{AZURE_OPENAI_SERVICE}.openai.azure.com"
     openai.api_version = "2023-07-01-preview"
@@ -166,6 +174,7 @@ async def setup_clients():
     current_app.config[CONFIG_OPENAI_TOKEN] = openai_token
     current_app.config[CONFIG_CREDENTIAL] = azure_credential
     current_app.config[CONFIG_BLOB_CONTAINER_CLIENT] = blob_container_client
+    current_app.config[CONFIG_VISION_KEY] = vision_secret.value
 
     # Various approaches to integrate GPT and external knowledge, most applications will use a single one of these patterns
     # or some derivative, here we include several for exploration purposes

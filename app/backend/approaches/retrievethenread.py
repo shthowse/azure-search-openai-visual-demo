@@ -88,7 +88,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         include_gtpV_images = overrides.get("gptv_input") in ["textAndImages", "images", None]
 
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
-        top = overrides.get("top") or 3
+        top = overrides.get("top", 3)
         exclude_category = overrides.get("exclude_category") or None
         filter = "category ne '{}'".format(exclude_category.replace("'", "''")) if exclude_category else None
 

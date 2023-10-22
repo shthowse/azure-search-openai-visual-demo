@@ -78,11 +78,11 @@ If you cannot generate a search query, return just the number 0.
     async def run(self, history: list[dict[str, str]], overrides: dict[str, Any]) -> Any:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
-        vector_fields = overrides.get("vector_fields") or []
+        vector_fields = overrides.get("vector_fields", [])
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top") or 3
-        exclude_category = overrides.get("exclude_category") or None
-        use_gptv = overrides.get("use_gptv")
+        exclude_category = overrides.get("exclude_category", None) 
+        use_gptv = overrides.get("use_gptv", False)
 
         include_gtpV_text = overrides.get("gptv_input") in ["textAndImages", "texts", None]
         include_gtpV_images = overrides.get("gptv_input") in ["textAndImages", "images", None]

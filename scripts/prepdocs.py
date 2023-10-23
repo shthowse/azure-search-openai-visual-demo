@@ -11,10 +11,10 @@ from datetime import datetime, timedelta
 import fitz
 import openai
 import requests
-from azure.keyvault.secrets import SecretClient
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import AzureDeveloperCliCredential
+from azure.keyvault.secrets import SecretClient
 from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (

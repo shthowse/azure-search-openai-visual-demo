@@ -1,8 +1,8 @@
+import logging
 import os
 
 import aiohttp
 from quart import current_app
-import logging
 
 
 async def generate_image_embeddings(text):

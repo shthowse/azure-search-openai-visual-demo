@@ -7,9 +7,8 @@ import time
 import aiohttp
 import openai
 from azure.identity.aio import DefaultAzureCredential
-
-from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.keyvault.secrets.aio import SecretClient
+from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import BlobServiceClient
 from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor

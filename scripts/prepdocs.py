@@ -315,11 +315,11 @@ def save_base64_as_image(img_string, file_path):
 
 
 # Looks like azure-ai-vision==0.13.0b1 does not support vectorizeImage yet
-# @retry(
-#     wait=wait_random_exponential(min=1, max=60),
-#     stop=stop_after_attempt(15),
-#     before_sleep=before_retry_sleep("Computer Vision"),
-# )
+@retry(
+    wait=wait_random_exponential(min=1, max=60),
+    stop=stop_after_attempt(15),
+    before_sleep=before_retry_sleep("Computer Vision"),
+)
 def compute_image_embedding(file_name):
     print(f"compute_image_embedding '{file_name}' ")
 

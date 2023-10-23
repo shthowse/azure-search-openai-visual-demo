@@ -56,7 +56,7 @@ param formRecognizerSkuName string = 'S0'
 
 param computerVisionServiceName string = ''
 param computerVisionResourceGroupName string = ''
-param computerVisionResourceGroupLocation string = location
+param computerVisionResourceGroupLocation string = 'eastus' //Vision vectorize apir is yet to be deployed globally
 param computerVisionSkuName string = 'S1'
 
 param chatGptDeploymentName string // Set in main.parameters.json
@@ -238,7 +238,6 @@ module formRecognizer 'core/ai/cognitiveservices.bicep' = {
     }
   }
 }
-
 
 module computerVision 'core/ai/cognitiveservices.bicep' = {
   name: 'computerVision'

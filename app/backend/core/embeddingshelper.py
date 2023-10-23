@@ -6,9 +6,8 @@ import logging
 
 
 async def generate_image_embeddings(text):
-    endpoint = f"{os.environ['AZURE_COMPUTER_VISION_ENDPOINT']}/computervision/retrieval:vectorizeText"
-
-    params = {"api-version": "2023-02-01-preview"}
+    endpoint = f"{os.environ['AZURE_COMPUTER_VISION_ENDPOINT']}computervision/retrieval:vectorizeText"
+    params = {"api-version": "2023-02-01-preview", "modelVersion": "latest"}
     headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": current_app.config['vision_key']}
     data = {"text": text}
 

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import fitz
 import openai
 import requests
+from azure.keyvault.secrets import SecretClient
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import AzureDeveloperCliCredential
@@ -337,11 +338,11 @@ def save_base64_as_image(img_string, file_path):
 
 
 # Looks like azure-ai-vision==0.13.0b1 does not support vectorizeImage yet
-@retry(
-    wait=wait_random_exponential(min=1, max=60),
-    stop=stop_after_attempt(15),
-    before_sleep=before_retry_sleep("Computer Vision"),
-)
+# @retry(
+#     wait=wait_random_exponential(min=1, max=60),
+#     stop=stop_after_attempt(15),
+#     before_sleep=before_retry_sleep("Computer Vision"),
+# )
 def compute_image_embedding(file_name):
     print(f"compute_image_embedding '{file_name}' ")
 
@@ -364,9 +365,9 @@ def compute_image_embedding(file_name):
     }
     sas_token = generate_blob_sas(account_name=blob_client.account_name, **sas_token_params)
 
-    endpoint = f"{os.environ['VISION_ENDPOINT']}/computervision/retrieval:vectorizeImage"
+    endpoint = f"{os.environ['AZURE_COMPUTER_VISION_ENDPOINT']}computervision/retrieval:vectorizeImage"
     params = {"api-version": "2023-02-01-preview", "modelVersion": "latest"}
-    headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": os.environ["VISION_KEY"]}
+    headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": vision_secret}
     data = {"url": f"{blob_client.url}?{sas_token}"}
     response = requests.post(endpoint, params=params, headers=headers, json=data)
 
@@ -544,6 +545,21 @@ if __name__ == "__main__":
         "--searchimages", action="store_true", help="Generate embeddings each page to be searched as a image"
     )
     parser.add_argument(
+        "--visionname",
+        required=False,
+        help="Required if --searchImages is set to true. This is a cognitive service vision name.",
+    )
+    parser.add_argument(
+        "--keyVaultName",
+        required=False,
+        help="Required if --visionname is set to true. Keyvault where api keys are stored",
+    )
+    parser.add_argument(
+        "--visionSecretName",
+        required=False,
+        help="Required if --visionname is set to true. This the secret",
+    )
+    parser.add_argument(
         "--openaikey",
         required=False,
         help="Optional. Use this Azure OpenAI account key instead of the current user identity to login (use az login to set current user for Azure)",
@@ -584,6 +600,10 @@ if __name__ == "__main__":
     )
     default_creds = azd_credential if args.searchkey is None or args.storagekey is None else None
     search_creds = default_creds if args.searchkey is None else AzureKeyCredential(args.searchkey)
+
+    key_vault_client = SecretClient(vault_url=f"https://{args.keyVaultName}.vault.azure.net", credential=default_creds)
+    vision_secret =  key_vault_client.get_secret(args.visionSecretName).value
+
     use_vectors = not args.novectors
 
     if not args.skipblobs:

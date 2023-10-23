@@ -7,3 +7,4 @@ openai[datalib]==0.28.0
 tenacity==8.2.2
 PyMuPDF==1.22.5
 Pillow==10.0.0
+azure-keyvault-secrets==4.7.0

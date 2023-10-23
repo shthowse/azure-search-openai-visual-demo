@@ -7,6 +7,7 @@ import time
 import aiohttp
 import openai
 from azure.identity.aio import DefaultAzureCredential
+
 from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.keyvault.secrets.aio import SecretClient
 from azure.search.documents.aio import SearchClient
@@ -116,9 +117,7 @@ async def chat():
 async def ensure_openai_token():
     openai_token = current_app.config[CONFIG_OPENAI_TOKEN]
     if openai_token.expires_on < time.time() + 60:
-        openai_token = await current_app.config[CONFIG_CREDENTIAL].get_token(
-            "https://cognitiveservices.azure.com/.default"
-        )
+        openai_token = await current_app.config[CONFIG_CREDENTIAL].get_token("https://cognitiveservices.azure.com/.default")
         current_app.config[CONFIG_OPENAI_TOKEN] = openai_token
         openai.api_key = openai_token.token
 
@@ -137,12 +136,12 @@ async def setup_clients():
     AZURE_OPENAI_GPTV_DEPLOYMENT = os.environ.get("AZURE_OPENAI_GPTV_DEPLOYMENT")
     AZURE_OPENAI_GPTV_MODEL = os.environ.get("AZURE_OPENAI_GPTV_MODEL")
     VISION_SECRET_NAME = os.environ.get("AZURE_COMPUTER_VISION_SECRET_NAME")
-    
+
     KB_FIELDS_CONTENT = os.getenv("KB_FIELDS_CONTENT", "content")
     KB_FIELDS_SOURCEPAGE = os.getenv("KB_FIELDS_SOURCEPAGE", "sourcepage")
 
     keyVaultName = os.environ["AZURE_KEY_VAULT_NAME"]
- 
+
     # Use the current user identity to authenticate with Azure OpenAI, Cognitive Search and Blob Storage (no secrets needed,
     # just use 'az login' locally, and managed identity when deployed on Azure). If you need to use keys, use separate AzureKeyCredential instances with the
     # keys for each service
@@ -155,9 +154,7 @@ async def setup_clients():
         index_name=AZURE_SEARCH_INDEX,
         credential=azure_credential,
     )
-    blob_client = BlobServiceClient(
-        account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net", credential=azure_credential
-    )
+    blob_client = BlobServiceClient(account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net", credential=azure_credential)
     blob_container_client = blob_client.get_container_client(AZURE_STORAGE_CONTAINER)
 
     key_vault_client = SecretClient(vault_url=f"https://{keyVaultName}.vault.azure.net", credential=azure_credential)

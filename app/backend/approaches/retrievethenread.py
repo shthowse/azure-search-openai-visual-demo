@@ -99,9 +99,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         vectors = []
         if has_vector:
             if "embedding" in vector_fields:
-                text_query_vector = (await openai.Embedding.acreate(engine=self.embedding_deployment, input=q))["data"][
-                    0
-                ]["embedding"]
+                text_query_vector = (await openai.Embedding.acreate(engine=self.embedding_deployment, input=q))["data"][0]["embedding"]
                 vectors.append(Vector(value=text_query_vector, k=50, fields="embedding"))
             if "imageEmbedding" in vector_fields:
                 image_query_vector = await generate_image_embeddings(q)
@@ -143,9 +141,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         image_list = []
         user_content = [q]
 
-        template = overrides.get("prompt_template") or (
-            self.system_chat_template_gptv if use_gptv else self.system_chat_template
-        )
+        template = overrides.get("prompt_template") or (self.system_chat_template_gptv if use_gptv else self.system_chat_template)
         model = self.gptv_model if use_gptv else self.chatgpt_model
         message_builder = MessageBuilder(template, model)
 
@@ -154,9 +150,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         if include_gtpV_text and use_gptv:
             user_content.append(sources_content)
         if include_gtpV_images and use_gptv:
-            image_list.extend(
-                await asyncio.gather(*(fetch_image(self.blob_container_client, result) for result in results))
-            )
+            image_list.extend(await asyncio.gather(*(fetch_image(self.blob_container_client, result) for result in results)))
             user_content.extend(image_list)
 
         # Append user message

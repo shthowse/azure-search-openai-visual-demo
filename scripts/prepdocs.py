@@ -83,9 +83,7 @@ def add_text_to_image(image_data, text):
 
 
 def upload_blobs(filename, upload_as_images):
-    blob_service = BlobServiceClient(
-        account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds
-    )
+    blob_service = BlobServiceClient(account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds)
     blob_container = blob_service.get_container_client(args.container)
     if not blob_container.exists():
         blob_container.create_container()
@@ -120,9 +118,7 @@ def upload_blobs(filename, upload_as_images):
 def remove_blobs(filename):
     if args.verbose:
         print(f"Removing blobs for '{filename or '<all>'}'")
-    blob_service = BlobServiceClient(
-        account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds
-    )
+    blob_service = BlobServiceClient(account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds)
     blob_container = blob_service.get_container_client(args.container)
     if blob_container.exists():
         if filename is None:
@@ -141,10 +137,7 @@ def remove_blobs(filename):
 
 def table_to_html(table):
     table_html = "<table>"
-    rows = [
-        sorted([cell for cell in table.cells if cell.row_index == i], key=lambda cell: cell.column_index)
-        for i in range(table.row_count)
-    ]
+    rows = [sorted([cell for cell in table.cells if cell.row_index == i], key=lambda cell: cell.column_index) for i in range(table.row_count)]
     for row_cells in rows:
         table_html += "<tr>"
         for cell in row_cells:
@@ -183,11 +176,7 @@ def get_document_text(filename):
         form_recognizer_results = poller.result()
 
         for page_num, page in enumerate(form_recognizer_results.pages):
-            tables_on_page = [
-                table
-                for table in form_recognizer_results.tables
-                if table.bounding_regions[0].page_number == page_num + 1
-            ]
+            tables_on_page = [table for table in form_recognizer_results.tables if table.bounding_regions[0].page_number == page_num + 1]
 
             # mark all positions of the table spans in the page
             page_offset = page.spans[0].offset
@@ -243,11 +232,7 @@ def split_text(page_map):
             end = length
         else:
             # Try to find the end of the sentence
-            while (
-                end < length
-                and (end - start - MAX_SECTION_LENGTH) < SENTENCE_SEARCH_LIMIT
-                and all_text[end] not in SENTENCE_ENDINGS
-            ):
+            while end < length and (end - start - MAX_SECTION_LENGTH) < SENTENCE_SEARCH_LIMIT and all_text[end] not in SENTENCE_ENDINGS:
                 if all_text[end] in WORDS_BREAKS:
                     last_word = end
                 end += 1
@@ -258,11 +243,7 @@ def split_text(page_map):
 
         # Try to find the start of the sentence or at least a whole word boundary
         last_word = -1
-        while (
-            start > 0
-            and start > end - MAX_SECTION_LENGTH - 2 * SENTENCE_SEARCH_LIMIT
-            and all_text[start] not in SENTENCE_ENDINGS
-        ):
+        while start > 0 and start > end - MAX_SECTION_LENGTH - 2 * SENTENCE_SEARCH_LIMIT and all_text[start] not in SENTENCE_ENDINGS:
             if all_text[start] in WORDS_BREAKS:
                 last_word = start
             start -= 1
@@ -280,9 +261,7 @@ def split_text(page_map):
             # If table starts inside SENTENCE_SEARCH_LIMIT, we ignore it, as that will cause an infinite loop for tables longer than MAX_SECTION_LENGTH
             # If last table starts inside SECTION_OVERLAP, keep overlapping
             if args.verbose:
-                print(
-                    f"Section ends with unclosed table, starting next section with the table at page {find_page(start)} offset {start} table start {last_table_start}"
-                )
+                print(f"Section ends with unclosed table, starting next section with the table at page {find_page(start)} offset {start} table start {last_table_start}")
             start = min(end - SECTION_OVERLAP, start + last_table_start)
         else:
             start = end - SECTION_OVERLAP
@@ -323,9 +302,7 @@ def before_retry_sleep(api_name):
     return api_before_retry_sleep
 
 
-@retry(
-    wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(15), before_sleep=before_retry_sleep("OpenAI")
-)
+@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(15), before_sleep=before_retry_sleep("OpenAI"))
 def compute_text_embedding(text):
     refresh_openai_token()
     return openai.Embedding.create(engine=args.openaideployment, input=text)["data"][0]["embedding"]
@@ -346,9 +323,7 @@ def save_base64_as_image(img_string, file_path):
 def compute_image_embedding(file_name):
     print(f"compute_image_embedding '{file_name}' ")
 
-    blob_service = BlobServiceClient(
-        account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds
-    )
+    blob_service = BlobServiceClient(account_url=f"https://{args.storageaccount}.blob.core.windows.net", credential=storage_creds)
     blob_client = blob_service.get_blob_client(args.container, file_name)
 
     # Get a user delegation key
@@ -378,9 +353,7 @@ def compute_image_embedding(file_name):
 def create_search_index():
     if args.verbose:
         print(f"Ensuring search index {args.index} exists")
-    index_client = SearchIndexClient(
-        endpoint=f"https://{args.searchservice}.search.windows.net/", credential=search_creds
-    )
+    index_client = SearchIndexClient(endpoint=f"https://{args.searchservice}.search.windows.net/", credential=search_creds)
 
     if args.index not in index_client.list_index_names():
         index = SearchIndex(
@@ -414,17 +387,13 @@ def create_search_index():
                 configurations=[
                     SemanticConfiguration(
                         name="default",
-                        prioritized_fields=PrioritizedFields(
-                            title_field=None, prioritized_content_fields=[SemanticField(field_name="content")]
-                        ),
+                        prioritized_fields=PrioritizedFields(title_field=None, prioritized_content_fields=[SemanticField(field_name="content")]),
                     )
                 ]
             ),
             vector_search=VectorSearch(
                 algorithm_configurations=[
-                    HnswVectorSearchAlgorithmConfiguration(
-                        name="default", kind="hnsw", hnsw_parameters=HnswParameters(metric="cosine")
-                    ),
+                    HnswVectorSearchAlgorithmConfiguration(name="default", kind="hnsw", hnsw_parameters=HnswParameters(metric="cosine")),
                     # TODO: Check if we need another config
                     HnswVectorSearchAlgorithmConfiguration(
                         name="image-vector-config",
@@ -445,9 +414,7 @@ def create_search_index():
 def index_sections(filename, sections):
     if args.verbose:
         print(f"Indexing sections from '{filename}' into search index '{args.index}'")
-    search_client = SearchClient(
-        endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds
-    )
+    search_client = SearchClient(endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds)
     i = 0
     batch = []
     for s in sections:
@@ -470,9 +437,7 @@ def index_sections(filename, sections):
 def remove_from_index(filename):
     if args.verbose:
         print(f"Removing sections from '{filename or '<all>'}' from search index '{args.index}'")
-    search_client = SearchClient(
-        endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds
-    )
+    search_client = SearchClient(endpoint=f"https://{args.searchservice}.search.windows.net/", index_name=args.index, credential=search_creds)
     while True:
         filter = None if filename is None else f"sourcefile eq '{os.path.basename(filename)}'"
         r = search_client.search("", filter=filter, top=1000, include_total_count=True)
@@ -487,10 +452,7 @@ def remove_from_index(filename):
 
 # refresh open ai token every 5 minutes
 def refresh_openai_token():
-    if (
-        open_ai_token_cache[CACHE_KEY_TOKEN_TYPE] == "azure_ad"
-        and open_ai_token_cache[CACHE_KEY_CREATED_TIME] + 300 < time.time()
-    ):
+    if open_ai_token_cache[CACHE_KEY_TOKEN_TYPE] == "azure_ad" and open_ai_token_cache[CACHE_KEY_CREATED_TIME] + 300 < time.time():
         token_cred = open_ai_token_cache[CACHE_KEY_TOKEN_CRED]
         openai.api_key = token_cred.get_token("https://cognitiveservices.azure.com/.default").token
         open_ai_token_cache[CACHE_KEY_CREATED_TIME] = time.time()
@@ -502,12 +464,8 @@ if __name__ == "__main__":
         epilog="Example: prepdocs.py '..\data\*' --storageaccount myaccount --container mycontainer --searchservice mysearch --index myindex -v",
     )
     parser.add_argument("files", help="Files to be processed")
-    parser.add_argument(
-        "--category", help="Value for the category field in the search index for all sections indexed in this run"
-    )
-    parser.add_argument(
-        "--skipblobs", action="store_true", help="Skip uploading individual pages to Azure Blob Storage"
-    )
+    parser.add_argument("--category", help="Value for the category field in the search index for all sections indexed in this run")
+    parser.add_argument("--skipblobs", action="store_true", help="Skip uploading individual pages to Azure Blob Storage")
     parser.add_argument("--storageaccount", help="Azure Blob Storage account name")
     parser.add_argument("--container", help="Azure Blob Storage container name")
     parser.add_argument(
@@ -515,9 +473,7 @@ if __name__ == "__main__":
         required=False,
         help="Optional. Use this Azure Blob Storage account key instead of the current user identity to login (use az login to set current user for Azure)",
     )
-    parser.add_argument(
-        "--tenantid", required=False, help="Optional. Use this to define the Azure directory where to authenticate)"
-    )
+    parser.add_argument("--tenantid", required=False, help="Optional. Use this to define the Azure directory where to authenticate)")
     parser.add_argument(
         "--searchservice",
         help="Name of the Azure Cognitive Search service where content should be indexed (must exist already)",
@@ -541,9 +497,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Don't compute embeddings for the sections (e.g. don't call the OpenAI embeddings API during indexing)",
     )
-    parser.add_argument(
-        "--searchimages", action="store_true", help="Generate embeddings each page to be searched as a image"
-    )
+    parser.add_argument("--searchimages", action="store_true", help="Generate embeddings each page to be searched as a image")
     parser.add_argument(
         "--visionname",
         required=False,
@@ -593,16 +547,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Use the current user identity to connect to Azure services unless a key is explicitly set for any of them
-    azd_credential = (
-        AzureDeveloperCliCredential()
-        if args.tenantid is None
-        else AzureDeveloperCliCredential(tenant_id=args.tenantid, process_timeout=60)
-    )
+    azd_credential = AzureDeveloperCliCredential() if args.tenantid is None else AzureDeveloperCliCredential(tenant_id=args.tenantid, process_timeout=60)
     default_creds = azd_credential if args.searchkey is None or args.storagekey is None else None
     search_creds = default_creds if args.searchkey is None else AzureKeyCredential(args.searchkey)
 
     key_vault_client = SecretClient(vault_url=f"https://{args.keyVaultName}.vault.azure.net", credential=default_creds)
-    vision_secret =  key_vault_client.get_secret(args.visionSecretName).value
+    vision_secret = key_vault_client.get_secret(args.visionSecretName).value
 
     use_vectors = not args.novectors
 
@@ -611,13 +561,9 @@ if __name__ == "__main__":
     if not args.localpdfparser:
         # check if Azure Form Recognizer credentials are provided
         if args.formrecognizerservice is None:
-            print(
-                "Error: Azure Form Recognizer service is not provided. Please provide formrecognizerservice or use --localpdfparser for local pypdf parser."
-            )
+            print("Error: Azure Form Recognizer service is not provided. Please provide formrecognizerservice or use --localpdfparser for local pypdf parser.")
             exit(1)
-        formrecognizer_creds = (
-            default_creds if args.formrecognizerkey is None else AzureKeyCredential(args.formrecognizerkey)
-        )
+        formrecognizer_creds = default_creds if args.formrecognizerkey is None else AzureKeyCredential(args.formrecognizerkey)
 
     if use_vectors:
         if args.openaikey is None:

@@ -20,11 +20,13 @@ class BlobManager:
         endpoint: str,
         container: str,
         credential: Union[AsyncTokenCredential, str],
+        store_page_images: bool = False,
         verbose: bool = False,
     ):
         self.endpoint = endpoint
         self.credential = credential
         self.container = container
+        self.store_page_images = store_page_images
         self.verbose = verbose
 
     async def upload_blob(self, file: File):

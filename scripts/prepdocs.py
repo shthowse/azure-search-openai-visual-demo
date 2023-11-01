@@ -239,6 +239,21 @@ if __name__ == "__main__":
         required=False,
         help="Optional. Use this Azure Form Recognizer account key instead of the current user identity to login (use az login to set current user for Azure)",
     )
+    parser.add_argument(
+        "--searchimages",
+        required=False,
+        help="Optional. Generate image embeddings to enable each page to be searched as an image",
+    )
+    parser.add_argument(
+        "--visionservice",
+        required=False,
+        help="Optional, required if --searchimages is specified. Name of Azure AI Vision service to use when scanning images.",
+    )
+    parser.add_argument(
+        "--visionkey",
+        required=False,
+        help="Optional. Use this Azure AI Vision key instead of the instead of the current user identity to login (use az login to set current user for Azure)",
+    )
 
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()

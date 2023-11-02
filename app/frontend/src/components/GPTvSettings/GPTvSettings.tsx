@@ -5,13 +5,15 @@ import styles from "./GPTvSettings.module.css";
 import { GPTVInput } from "../../api";
 
 interface Props {
+    gptvInputs: GPTVInput;
+    useGptV: boolean;
     updateGPTvInputs: (input: GPTVInput) => void;
     updateUseGPTv: (useGPTv: boolean) => void;
 }
 
-export const GPTvSettings = ({ updateGPTvInputs, updateUseGPTv }: Props) => {
-    const [useGPTv, setUseGPTV] = useState<boolean>(false);
-    const [vectorFieldOption, setVectorFieldOption] = useState<GPTVInput>(GPTVInput.TextAndImages);
+export const GPTvSettings = ({ updateGPTvInputs, updateUseGPTv, useGptV, gptvInputs }: Props) => {
+    const [useGPTv, setUseGPTV] = useState<boolean>(useGptV);
+    const [vectorFieldOption, setVectorFieldOption] = useState<GPTVInput>(gptvInputs || GPTVInput.TextAndImages);
 
     const onUseGPTv = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
         updateUseGPTv(!!checked);
@@ -20,8 +22,9 @@ export const GPTvSettings = ({ updateGPTvInputs, updateUseGPTv }: Props) => {
 
     const onSetGptVInput = (_ev: React.FormEvent<HTMLDivElement>, option?: IDropdownOption<GPTVInput> | undefined) => {
         if (option) {
-            updateGPTvInputs(option.data || GPTVInput.TextAndImages);
-            option.data && setVectorFieldOption(option.data);
+            const data = option.key as GPTVInput;
+            updateGPTvInputs(data || GPTVInput.TextAndImages);
+            data && setVectorFieldOption(data);
         }
     };
 
@@ -34,19 +37,17 @@ export const GPTvSettings = ({ updateGPTvInputs, updateUseGPTv }: Props) => {
             <Checkbox checked={useGPTv} label="Use GPT-V" onChange={onUseGPTv} />
             {useGPTv && (
                 <Dropdown
-                    defaultSelectedKey={GPTVInput.TextAndImages}
+                    selectedKey={vectorFieldOption}
                     className={styles.oneshotSettingsSeparator}
                     label="GPTV Inputs"
                     options={[
                         {
                             key: GPTVInput.TextAndImages,
-                            text: "Images and text from index",
-                            data: GPTVInput.TextAndImages
+                            text: "Images and text from index"
                         },
-                        { key: "images", text: "Images only", data: GPTVInput.Images },
-                        { key: "text", text: "Text only", data: GPTVInput.Texts }
+                        { text: "Images only", key: GPTVInput.Images },
+                        { text: "Text only", key: GPTVInput.Texts }
                     ]}
-                    selectedKey={vectorFieldOption}
                     required
                     onChange={onSetGptVInput}
                 />

@@ -5,7 +5,7 @@ import styles from "./VectorSettings.module.css";
 import { RetrievalMode, VectorFieldOptions } from "../../api";
 
 interface Props {
-    showImageOptions: boolean;
+    showImageOptions?: boolean;
     updateRetrievalMode: (retrievalMode: RetrievalMode) => void;
     updateVectorFields: (options: VectorFieldOptions[]) => void;
 }

@@ -1,0 +1,16 @@
+azure-identity
+quart
+quart-cors
+openai[datalib]
+tiktoken
+azure-search-documents==11.4.0b8
+azure-storage-blob
+uvicorn
+aiohttp
+azure-monitor-opentelemetry
+opentelemetry-instrumentation-asgi
+opentelemetry-instrumentation-requests
+opentelemetry-instrumentation-aiohttp-client
+msal
+msal-extensions
+azure-keyvault-secrets

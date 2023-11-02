@@ -4,7 +4,7 @@ import SyntaxHighlighter from "react-syntax-highlighter";
 import styles from "./AnalysisPanel.module.css";
 
 import { SupportingContent } from "../SupportingContent";
-import { AskResponse } from "../../api";
+import { ChatAppResponse } from "../../api";
 import { AnalysisPanelTabs } from "./AnalysisPanelTabs";
 
 interface Props {
@@ -13,14 +13,14 @@ interface Props {
     onActiveTabChanged: (tab: AnalysisPanelTabs) => void;
     activeCitation: string | undefined;
     citationHeight: string;
-    answer: AskResponse;
+    answer: ChatAppResponse;
 }
 
 const pivotItemDisabledStyle = { disabled: true, style: { color: "grey" } };
 
 export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeight, className, onActiveTabChanged }: Props) => {
-    const isDisabledThoughtProcessTab: boolean = !answer.thought_steps;
-    const isDisabledSupportingContentTab: boolean = !answer.data_points;
+    const isDisabledThoughtProcessTab: boolean = !answer.choices[0].context.thoughts;
+    const isDisabledSupportingContentTab: boolean = !answer.choices[0].context.data_points;
     const isDisabledCitationTab: boolean = !activeCitation;
 
     return (
@@ -36,7 +36,7 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeigh
             >
                 <div>
                     <ul className={styles.tList}>
-                        {answer.thought_steps.map(t => {
+                        {answer.choices[0].context.thoughts.map(t => {
                             return (
                                 <li className={styles.tListItem}>
                                     <div className={styles.tStep}>{t.title}</div>
@@ -68,7 +68,7 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeigh
                 headerText="Supporting content"
                 headerButtonProps={isDisabledSupportingContentTab ? pivotItemDisabledStyle : undefined}
             >
-                <SupportingContent supportingContent={answer.data_points} />
+                <SupportingContent supportingContent={answer.choices[0].context.data_points} />
             </PivotItem>
             <PivotItem
                 itemKey={AnalysisPanelTabs.CitationTab}

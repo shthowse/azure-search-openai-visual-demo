@@ -1,13 +1,13 @@
 import asyncio
 import os
-from typing import Any
+from typing import Any, AsyncGenerator, Optional, Union
 
 import openai
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.models import QueryType, Vector
 from azure.storage.blob import ContainerClient
 
-from approaches.approach import ApproachResult, AskApproach, ThoughtStep
+from approaches.approach import Approach, ThoughtStep
 from core.embeddingshelper import generate_image_embeddings, serialize_data
 from core.imageshelper import fetch_image
 from core.messagebuilder import MessageBuilder
@@ -18,7 +18,7 @@ AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT")
 AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER")
 
 
-class RetrieveThenReadApproach(AskApproach):
+class RetrieveThenReadApproach(Approach):
     """
     Simple retrieve-then-read implementation, using the Cognitive Search and OpenAI APIs directly. It first retrieves
     top documents from search, then constructs a prompt with them, and then uses OpenAI to generate an completion
@@ -60,25 +60,42 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         self,
         search_client: SearchClient,
         blob_container_client: ContainerClient,
-        chatgpt_deployment: str,
+        openai_host: str,
+        chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
         chatgpt_model: str,
-        gptv_deployment: str,
-        gptv_model: str,
-        embedding_deployment: str,
+        gptv_deployment: Optional[str],
+        gptv_model: Optional[str],
+        embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
+        embedding_model: str,
         sourcepage_field: str,
         content_field: str,
+        query_language: str,
+        query_speller: str,
     ):
         self.search_client = search_client
         self.blob_container_client = blob_container_client
+        self.openai_host = openai_host
         self.chatgpt_deployment = chatgpt_deployment
         self.chatgpt_model = chatgpt_model
+        self.embedding_model = embedding_model
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
         self.content_field = content_field
         self.gptv_deployment = gptv_deployment
         self.gptv_model = gptv_model
+        self.query_language = query_language
+        self.query_speller = query_speller
 
-    async def run(self, q: str, overrides: dict[str, Any]) -> ApproachResult:
+    async def run(
+        self,
+        messages: list[dict],
+        stream: bool = False,  # Stream is not used in this approach
+        session_state: Any = None,
+        context: dict[str, Any] = {},
+    ) -> Union[dict[str, Any], AsyncGenerator[dict[str, Any], None]]:
+        q = messages[-1]["content"]
+        overrides = context.get("overrides", {})
+        auth_claims = context.get("auth_claims", {})
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
         vector_fields = overrides.get("vector_fields") or []
@@ -89,8 +106,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
 
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
-        exclude_category = overrides.get("exclude_category") or None
-        filter = "category ne '{}'".format(exclude_category.replace("'", "''")) if exclude_category else None
+        filter = self.build_filter(overrides, auth_claims)
 
         text_query_vector = None
         image_query_vector = None
@@ -99,7 +115,9 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         vectors = []
         if has_vector:
             if "embedding" in vector_fields:
-                text_query_vector = (await openai.Embedding.acreate(engine=self.embedding_deployment, input=q))["data"][0]["embedding"]
+                embedding_args = {"deployment_id": self.embedding_deployment} if self.openai_host == "azure" else {}
+                embedding = await openai.Embedding.acreate(**embedding_args, model=self.embedding_model, input=q)
+                text_query_vector = embedding["data"][0]["embedding"]
                 vectors.append(Vector(value=text_query_vector, k=50, fields="embedding"))
             if "imageEmbedding" in vector_fields:
                 image_query_vector = await generate_image_embeddings(q)
@@ -114,8 +132,8 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                 query_text,
                 filter=filter,
                 query_type=QueryType.SEMANTIC,
-                query_language="en-us",
-                query_speller="lexicon",
+                query_language=self.query_language,
+                query_speller=self.query_speller,
                 semantic_configuration_name="default",
                 top=top,
                 query_caption="extractive|highlight-false" if use_semantic_captions else None,
@@ -141,7 +159,9 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         image_list = []
         user_content = [q]
 
-        template = overrides.get("prompt_template") or (self.system_chat_template_gptv if use_gptv else self.system_chat_template)
+        template = overrides.get("prompt_template") or (
+            self.system_chat_template_gptv if use_gptv else self.system_chat_template
+        )
         model = self.gptv_model if use_gptv else self.chatgpt_model
         message_builder = MessageBuilder(template, model)
 
@@ -150,26 +170,32 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         if include_gtpV_text and use_gptv:
             user_content.append(sources_content)
         if include_gtpV_images and use_gptv:
-            image_list.extend(await asyncio.gather(*(fetch_image(self.blob_container_client, result) for result in results)))
+            image_list.extend(
+                await asyncio.gather(*(fetch_image(self.blob_container_client, result) for result in results))
+            )
             user_content.extend(image_list)
 
         # Append user message
         if use_gptv:
-            message_builder.append_message("user", user_content)
+            message_builder.concat_content("user", user_content)
         else:
             user_content = q + "\n" + sources_content
-            message_builder.append_message("user", user_content)
-            message_builder.append_message("assistant", self.answer)
-            message_builder.append_message("user", self.question)
+            message_builder.insert_message("user", user_content)
+            message_builder.insert_message("assistant", self.answer)
+            message_builder.insert_message("user", self.question)
 
         messages = message_builder.messages
 
         # Chat completion
-        engine = self.gptv_deployment if use_gptv else self.chatgpt_deployment
+        deployment_id = self.gptv_deployment if use_gptv else self.chatgpt_deployment
         temperature = overrides.get("temperature") or (0.7 if use_gptv else 0.3)
+        chatgpt_args = {"deployment_id": deployment_id} if self.openai_host == "azure" else {}
+
+        if not use_gptv:
+            chatgpt_args["model"] = self.chatgpt_model
 
         chat_completion = await openai.ChatCompletion.acreate(
-            engine=engine,
+            **chatgpt_args,
             messages=messages,
             temperature=temperature,
             max_tokens=1024,
@@ -180,16 +206,22 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         if use_gptv:
             data_points["images"] = [d["image"] for d in image_list]
 
-        return ApproachResult(
-            chat_completion.choices[0].message.content,
-            data_points,
-            [
+        extra_info = {
+            "data_points": data_points,
+            "thoughts": [
                 ThoughtStep(
                     "Search Query",
                     query_text,
-                    {"vectorFields": vector_fields if has_vector else [], "semanticCaptions": use_semantic_captions},
+                    {
+                        "vectorFields": vector_fields if has_vector else [],
+                        "semanticCaptions": use_semantic_captions,
+                        "Model ID": deployment_id,
+                    },
                 ),
                 ThoughtStep("Results", trimmed_results),
                 ThoughtStep("Prompt", [str(message) for message in messages]),
             ],
-        )
+        }
+        chat_completion.choices[0]["context"] = extra_info
+        chat_completion.choices[0]["session_state"] = session_state
+        return chat_completion

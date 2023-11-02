@@ -115,9 +115,18 @@ async def ask():
                 request_json["messages"], context=context, session_state=request_json.get("session_state")
             )
         return jsonify(r)
+    except Exception as error:
+        logging.exception("Exception in /ask: %s", error)
+        return jsonify(error_dict(error)), 500
+
+
+async def format_as_ndjson(r: AsyncGenerator[dict, None]) -> AsyncGenerator[str, None]:
+    try:
+        async for event in r:
+            yield json.dumps(event, ensure_ascii=False) + "\n"
     except Exception as e:
-        logging.exception("Exception in /ask")
-        return jsonify({"error": str(e)}), 500
+        logging.exception("Exception while generating response stream: %s", e)
+        yield json.dumps(error_dict(e))
 
 
 async def format_as_ndjson(r: AsyncGenerator[dict, None]) -> AsyncGenerator[str, None]:

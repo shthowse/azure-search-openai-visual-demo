@@ -32,14 +32,24 @@ if ($env:AZURE_ADLS_GEN2_STORAGE_ACCOUNT) {
 if ($env:AZURE_SEARCH_ANALYZER_NAME) {
   $searchAnalyzerNameArg = "--searchanalyzername $env:AZURE_SEARCH_ANALYZER_NAME"
 }
-
-$argumentList = "./scripts/prepdocs.py `"$cwd/data/*`" $adlsGen2StorageAccountArg $adlsGen2FilesystemArg $adlsGen2FilesystemPathArg $searchAnalyzerNameArg " + `
+if ($env:AZURE_VISION_ENDPOINT) {
+  $visionEndpointArg = "--visionendpoint $env:AZURE_VISION_ENDPOINT"
+}
+if ($env:AZURE_VISION_KEY) {
+  $visionKeyArg = "--visionkey $env:AZURE_VISION_KEY"
+}
+$dataArg = "`"$cwd/data/*`""
+if ($env:AZURE_SEARCH_IMAGES -eq $true) {
+  $dataArg = "`"$cwd/data/HousingData/*`""
+  $searchImagesArg = "--searchimages"
+}
+$argumentList = "./scripts/prepdocs.py $dataArg $adlsGen2StorageAccountArg $adlsGen2FilesystemArg $adlsGen2FilesystemPathArg $searchAnalyzerNameArg " + `
 "$aclArg --storageaccount $env:AZURE_STORAGE_ACCOUNT --container $env:AZURE_STORAGE_CONTAINER " + `
 "--searchservice $env:AZURE_SEARCH_SERVICE --openaihost `"$env:OPENAI_HOST`" " + `
 "--openaiservice `"$env:AZURE_OPENAI_SERVICE`" --openaikey `"$env:OPENAI_API_KEY`" " + `
 "--openaiorg `"$env:OPENAI_ORGANIZATION`" --openaideployment `"$env:AZURE_OPENAI_EMB_DEPLOYMENT`" " + `
 # "--keyVaultName `"$env:AZURE_KEY_VAULT_NAME`" --visionSecretName `"$env:AZURE_COMPUTER_VISION_SECRET_NAME`" " + `
 "--openaimodelname `"$env:AZURE_OPENAI_EMB_MODEL_NAME`" --index $env:AZURE_SEARCH_INDEX " + `
-# "--searchimages" + `
+"$searchImagesArg $visionEndpointArg $visionKeyArg " + `
 "--formrecognizerservice $env:AZURE_FORMRECOGNIZER_SERVICE --tenantid $env:AZURE_TENANT_ID -v"
 Start-Process -FilePath $venvPythonPath -ArgumentList $argumentList -Wait -NoNewWindow

@@ -9,6 +9,7 @@ from azure.identity.aio import AzureDeveloperCliCredential
 from prepdocslib.blobmanager import BlobManager
 from prepdocslib.embeddings import (
     AzureOpenAIEmbeddingService,
+    ImageEmbeddings,
     OpenAIEmbeddings,
     OpenAIEmbeddingService,
 )
@@ -33,6 +34,7 @@ def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStra
         endpoint=f"https://{args.storageaccount}.blob.core.windows.net",
         container=args.container,
         credential=storage_creds,
+        store_page_images=args.searchimages,
         verbose=args.verbose,
     )
 
@@ -78,6 +80,18 @@ def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStra
             verbose=args.verbose,
         )
 
+    image_embeddings: Optional[ImageEmbeddings] = None
+    if args.searchimages:
+        if not args.visionkey:
+            print("Error: Please provide --visionkey when using --searchimages.")
+            exit(1)
+        if not args.visionendpoint:
+            print("Error: Please provide --visionendpoint when using --searchimages.")
+            exit(1)
+        image_embeddings = ImageEmbeddings(
+            credential=args.visionkey, endpoint=args.visionendpoint, verbose=args.verbose
+        )
+
     print("Processing files...")
     list_file_strategy: ListFileStrategy
     if args.datalakestorageaccount:
@@ -108,6 +122,7 @@ def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStra
         text_splitter=TextSplitter(),
         document_action=document_action,
         embeddings=embeddings,
+        image_embeddings=image_embeddings,
         search_analyzer_name=args.searchanalyzername,
         use_acls=args.useacls,
         category=args.category,
@@ -240,6 +255,23 @@ if __name__ == "__main__":
         required=False,
         help="Optional. Use this Azure Form Recognizer account key instead of the current user identity to login (use az login to set current user for Azure)",
     )
+    parser.add_argument(
+        "--searchimages",
+        action="store_true",
+        required=False,
+        help="Optional. Generate image embeddings to enable each page to be searched as an image",
+    )
+    parser.add_argument(
+        "--visionendpoint",
+        required=False,
+        help="Optional, required if --searchimages is specified. Endpoint of Azure AI Vision service to use when embedding images.",
+    )
+    parser.add_argument(
+        "--visionkey",
+        required=False,
+        help="Required if --searchimages is specified. Use this Azure AI Vision key instead of the instead of the current user identity to login (use az login to set current user for Azure)",
+    )
+    # Fetch vision key using ARM instead of directly using florence api call
 
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()

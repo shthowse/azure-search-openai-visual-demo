@@ -8,3 +8,5 @@ openai[datalib]
 tiktoken
 tenacity
 azure-keyvault-secrets
+Pillow
+PyMuPDF

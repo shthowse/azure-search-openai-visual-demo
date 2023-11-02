@@ -2,6 +2,7 @@ import time
 from abc import ABC
 from typing import Any, List, Optional, Union
 
+import aiohttp
 import openai
 import tiktoken
 from azure.core.credentials import AccessToken, AzureKeyCredential
@@ -190,3 +191,33 @@ class OpenAIEmbeddingService(OpenAIEmbeddings):
             "api_type": "openai",
             "organization": self.organization,
         }
+
+
+class ImageEmbeddings:
+    """
+    Class for using image embeddings from Azure AI Vision
+    To learn more, please visit https://learn.microsoft.com/azure/ai-services/computer-vision/how-to/image-retrieval#call-the-vectorize-image-api
+    """
+
+    def __init__(self, credential: str, endpoint: str):
+        self.credential = credential
+        self.endpoint = endpoint
+
+    async def create_embeddings(self, blob_urls: List[str]) -> List[List[float]]:
+        headers = {"Ocp-Apim-Subscription-Key": self.credential}
+        params = {"api-version": "2023-02-01-preview", "modelVersion": "latest"}
+        endpoint = f"{self.endpoint}/computervision/retrieval:vectorizeImage"
+        embeddings: List[List[float]] = []
+        async with aiohttp.ClientSession(headers=headers) as session:
+            for blob_url in blob_urls:
+                async for attempt in AsyncRetrying(
+                    wait=wait_random_exponential(min=15, max=60),
+                    stop=stop_after_attempt(15),
+                    before_sleep=self.before_retry_sleep,
+                ):
+                    with attempt:
+                        async with session.post(url=endpoint, params=params, raise_for_status=True) as resp:
+                            resp_json = await resp.json()
+                            embeddings.append(resp_json["vector"])
+
+        return embeddings

@@ -47,11 +47,13 @@ class SearchManager:
         search_analyzer_name: Optional[str] = None,
         use_acls: bool = False,
         embeddings: Optional[OpenAIEmbeddings] = None,
+        search_images: bool = False,
     ):
         self.search_info = search_info
         self.search_analyzer_name = search_analyzer_name
         self.use_acls = use_acls
         self.embeddings = embeddings
+        self.search_images = search_images
 
     async def create_index(self):
         if self.search_info.verbose:
@@ -87,6 +89,20 @@ class SearchManager:
                         name="groups", type=SearchFieldDataType.Collection(SearchFieldDataType.String), filterable=True
                     )
                 )
+            if self.search_images:
+                fields.append(
+                    SearchField(
+                        name="imageEmbedding",
+                        type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                        hidden=False,
+                        searchable=True,
+                        filterable=False,
+                        sortable=False,
+                        facetable=False,
+                        vector_search_dimensions=1024,
+                        vector_search_configuration="default",
+                    ),
+                )
 
             index = SearchIndex(
                 name=self.search_info.index_name,
@@ -117,7 +133,7 @@ class SearchManager:
                 if self.search_info.verbose:
                     print(f"Search index {self.search_info.index_name} already exists")
 
-    async def update_content(self, sections: List[Section]):
+    async def update_content(self, sections: List[Section], image_embeddings: Optional[List[List[float]]] = None):
         MAX_BATCH_SIZE = 1000
         section_batches = [sections[i : i + MAX_BATCH_SIZE] for i in range(0, len(sections), MAX_BATCH_SIZE)]
 
@@ -142,6 +158,9 @@ class SearchManager:
                     )
                     for i, document in enumerate(documents):
                         document["embedding"] = embeddings[i]
+                if image_embeddings:
+                    for i, document in enumerate(batch):
+                        document["imageEmbedding"] = image_embeddings[document["sourcepage"]]
 
                 await search_client.upload_documents(documents)
 

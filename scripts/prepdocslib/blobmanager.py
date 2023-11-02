@@ -60,7 +60,7 @@ class BlobManager:
         sas_uris = []
         start_time = datetime.datetime.now(datetime.timezone.utc)
         expiry_time = start_time + datetime.timedelta(days=1)
-        for i in page_count:
+        for i in range(page_count):
             blob_name = BlobManager.blob_image_name_from_file_page(file.content.name, i)
             if self.verbose:
                 print(f"\tConverting page {i} to image and uploading -> {blob_name}")
@@ -78,7 +78,7 @@ class BlobManager:
             output = io.BytesIO()
             img.save(output, format="PNG")
             output.seek(0)
-            blob_client = await container_client.upload_blob(blob_name, reopened_file, overwrite=True)
+            blob_client = await container_client.upload_blob(blob_name, output, overwrite=True)
             if self.user_delegation_key is None:
                 self.user_delegation_key = await service_client.get_user_delegation_key(start_time, expiry_time)
             sas_token = generate_blob_sas(
@@ -90,7 +90,7 @@ class BlobManager:
                 expiry=expiry_time,
                 start=start_time,
             )
-            sas_uris.append(f"{blob_client.uri}?{sas_token}")
+            sas_uris.append(f"{blob_client.url}?{sas_token}")
 
         return sas_uris
 

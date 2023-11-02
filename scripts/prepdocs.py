@@ -88,7 +88,9 @@ def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStra
         if not args.visionendpoint:
             print("Error: Please provide --visionendpoint when using --searchimages.")
             exit(1)
-        image_embeddings = ImageEmbeddings(credential=args.visionkey, endpoint=args.visionendpoint)
+        image_embeddings = ImageEmbeddings(
+            credential=args.visionkey, endpoint=args.visionendpoint, verbose=args.verbose
+        )
 
     print("Processing files...")
     list_file_strategy: ListFileStrategy

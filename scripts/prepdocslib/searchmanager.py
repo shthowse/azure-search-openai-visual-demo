@@ -159,8 +159,8 @@ class SearchManager:
                     for i, document in enumerate(documents):
                         document["embedding"] = embeddings[i]
                 if image_embeddings:
-                    for i, document in enumerate(batch):
-                        document["imageEmbedding"] = image_embeddings[document["sourcepage"]]
+                    for i, (document, section) in enumerate(zip(documents, batch)):
+                        document["imageEmbedding"] = image_embeddings[section.split_page.page_num]
 
                 await search_client.upload_documents(documents)
 

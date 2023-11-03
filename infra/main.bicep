@@ -117,7 +117,6 @@ resource formRecognizerResourceGroup 'Microsoft.Resources/resourceGroups@2021-04
   name: !empty(formRecognizerResourceGroupName) ? formRecognizerResourceGroupName : resourceGroup.name
 }
 
-
 resource computerVisionResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(computerVisionResourceGroupName)) {
   name: !empty(computerVisionResourceGroupName) ? computerVisionResourceGroupName : resourceGroup.name
 }
@@ -181,7 +180,7 @@ module backend 'core/host/appservice.bicep' = {
       AZURE_STORAGE_CONTAINER: storageContainerName
       AZURE_SEARCH_INDEX: searchIndexName
       AZURE_SEARCH_SERVICE: searchService.outputs.name
-      AZURE_COMPUTER_VISION_ENDPOINT: computerVision.outputs.endpoint
+      AZURE_VISION_ENDPOINT: computerVision.outputs.endpoint
       AZURE_SEARCH_QUERY_LANGUAGE: searchQueryLanguage
       AZURE_SEARCH_QUERY_SPELLER: searchQuerySpeller
       APPLICATIONINSIGHTS_CONNECTION_STRING: useApplicationInsights ? monitoring.outputs.applicationInsightsConnectionString : ''
@@ -334,7 +333,6 @@ module storage 'core/storage/storage-account.bicep' = {
   }
 }
 
-
 resource computerVisionResource 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: computerVisionName
   scope: computerVisionResourceGroup
@@ -343,6 +341,9 @@ resource computerVisionResource 'Microsoft.CognitiveServices/accounts@2023-05-01
 module keyvault 'core/security/key-vault.bicep' = {
   name: 'keyvault'
   scope: keyVaultResourceGroup
+  dependsOn:[
+    computerVision
+  ]
   params: {
     name: !empty(keyVaultName) ? keyVaultName : '${abbrs.keyVaultVaults}${resourceToken}'
     location: keyVaultResourceGroupLocation
@@ -486,9 +487,9 @@ output AZURE_OPENAI_GPTV_DEPLOYMENT string = (openAiHost == 'azure') ? gptvDeplo
 output OPENAI_API_KEY string = (openAiHost == 'openai') ? openAiApiKey : ''
 output OPENAI_ORGANIZATION string = (openAiHost == 'openai') ? openAiApiOrganization : ''
 
-output AZURE_COMPUTER_VISION_ENDPOINT string = computerVision.outputs.endpoint
-output AZURE_COMPUTER_VISION_SECRET_NAME string = keyvault.outputs.secretName
+output AZURE_VISION_ENDPOINT string = computerVision.outputs.endpoint
 
+output VISION_SECRET_NAME string = keyvault.outputs.secretName
 output AZURE_KEY_VAULT_NAME string = keyvault.outputs.name
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name

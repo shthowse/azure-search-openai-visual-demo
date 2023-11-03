@@ -5,6 +5,7 @@ from typing import Any, Optional, Union
 from azure.core.credentials import AzureKeyCredential
 from azure.core.credentials_async import AsyncTokenCredential
 from azure.identity.aio import AzureDeveloperCliCredential
+from azure.keyvault.secrets.aio import SecretClient
 
 from prepdocslib.blobmanager import BlobManager
 from prepdocslib.embeddings import (
@@ -28,7 +29,7 @@ def is_key_empty(key):
     return key is None or len(key.strip()) == 0
 
 
-def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStrategy:
+async def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStrategy:
     storage_creds = credential if is_key_empty(args.storagekey) else args.storagekey
     blob_manager = BlobManager(
         endpoint=f"https://{args.storageaccount}.blob.core.windows.net",
@@ -83,13 +84,23 @@ def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStra
     image_embeddings: Optional[ImageEmbeddings] = None
     if args.searchimages:
         if not args.visionkey:
-            print("Error: Please provide --visionkey when using --searchimages.")
-            exit(1)
+            if args.visionKeyVaultName and args.visionKeyVaultkey:
+                key_vault_client = SecretClient(
+                    vault_url=f"https://{args.visionKeyVaultName}.vault.azure.net", credential=credential
+                )
+                visionkey = await key_vault_client.get_secret(args.visionKeyVaultkey)
+            else:
+                print(
+                    "Error: Please provide --visionkey or --visionKeyVaultName and --visionKeyVaultkey when using --searchimages."
+                )
+                exit(1)
+
         if not args.visionendpoint:
             print("Error: Please provide --visionendpoint when using --searchimages.")
             exit(1)
+
         image_embeddings = ImageEmbeddings(
-            credential=args.visionkey, endpoint=args.visionendpoint, verbose=args.verbose
+            credential=args.visionkey or visionkey.value, endpoint=args.visionendpoint, verbose=args.verbose
         )
 
     print("Processing files...")
@@ -271,6 +282,16 @@ if __name__ == "__main__":
         required=False,
         help="Required if --searchimages is specified. Use this Azure AI Vision key instead of the instead of the current user identity to login (use az login to set current user for Azure)",
     )
+    parser.add_argument(
+        "--visionKeyVaultName",
+        required=False,
+        help="Required if --searchimages is specified and visionkey is not provided. Fetch the Azure AI Vision key from this keyvault instead of the instead of the current user identity to login (use az login to set current user for Azure)",
+    )
+    parser.add_argument(
+        "--visionKeyVaultkey",
+        required=False,
+        help="Required if --searchimages is specified and visionKeyVaultName is provided. Fetch the Azure AI Vision key from this visionKeyVaultName in the key vault instead of the instead of the current user identity to login (use az login to set current user for Azure)",
+    )
     # Fetch vision key using ARM instead of directly using florence api call
 
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
@@ -283,7 +304,8 @@ if __name__ == "__main__":
         else AzureDeveloperCliCredential(tenant_id=args.tenantid, process_timeout=60)
     )
 
-    file_strategy = setup_file_strategy(azd_credential, args)
+    # file_strategy =
     loop = asyncio.get_event_loop()
+    file_strategy = loop.run_until_complete(setup_file_strategy(azd_credential, args))
     loop.run_until_complete(main(file_strategy, azd_credential, args))
     loop.close()

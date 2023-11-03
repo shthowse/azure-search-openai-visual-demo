@@ -42,11 +42,11 @@ azure-monitor-opentelemetry==1.0.0
     # via -r requirements.in
 azure-monitor-opentelemetry-exporter==1.0.0b17
     # via azure-monitor-opentelemetry
-azure-search-documents==11.4.0b8
+azure-search-documents==11.4.0b11
     # via -r requirements.in
 azure-storage-blob==12.18.3
     # via -r requirements.in
-blinker==1.6.3
+blinker==1.7.0
     # via
     #   flask
     #   quart
@@ -56,7 +56,7 @@ certifi==2023.7.22
     #   requests
 cffi==1.16.0
     # via cryptography
-charset-normalizer==3.3.1
+charset-normalizer==3.3.2
     # via
     #   aiohttp
     #   requests

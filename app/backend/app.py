@@ -13,7 +13,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.identity.aio import DefaultAzureCredential
 from azure.keyvault.secrets.aio import SecretClient
 
-# from azure.monitor.opentelemetry import configure_azure_monitor
+from azure.monitor.opentelemetry import configure_azure_monitor
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import BlobServiceClient
 from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
@@ -302,7 +302,7 @@ async def setup_clients():
 
 def create_app():
     if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-        # configure_azure_monitor()
+        configure_azure_monitor()
         AioHttpClientInstrumentor().instrument()
     app = Quart(__name__)
     app.register_blueprint(bp)

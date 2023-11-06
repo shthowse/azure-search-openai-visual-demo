@@ -39,9 +39,6 @@ param openAiResourceGroupName string = ''
 param useGptV bool
 
 param keyVaultName string = ''
-param keyVaultResourceGroupName string = ''
-param keyVaultResourceGroupLocation string = location
-
 param computerVisionSecretName string = 'computerVisionSecret'
 
 
@@ -66,7 +63,7 @@ param formRecognizerSkuName string = 'S0'
 
 param computerVisionServiceName string = ''
 param computerVisionResourceGroupName string = ''
-param computerVisionResourceGroupLocation string = 'eastus' //Vision vectorize apir is yet to be deployed globally
+param computerVisionResourceGroupLocation string = 'eastus' //Vision vectorize API is yet to be deployed globally
 param computerVisionSkuName string = 'S1'
 
 param chatGptDeploymentName string // Set in main.parameters.json
@@ -127,10 +124,6 @@ resource searchServiceResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-
 
 resource storageResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(storageResourceGroupName)) {
   name: !empty(storageResourceGroupName) ? storageResourceGroupName : resourceGroup.name
-}
-
-resource keyVaultResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = if (!empty(keyVaultResourceGroupName)) {
-  name: !empty(keyVaultResourceGroupName) ? keyVaultResourceGroupName : resourceGroup.name
 }
 
 // Monitor application with Azure Monitor
@@ -277,13 +270,18 @@ module formRecognizer 'core/ai/cognitiveservices.bicep' = {
 }
 
 module computerVision 'core/ai/cognitiveservices.bicep' = {
-  name: 'computerVision'
+  name: 'computerVision' 
   scope: computerVisionResourceGroup
   params: {
     name: computerVisionName
     kind: 'ComputerVision'
     location: computerVisionResourceGroupLocation
     tags: tags
+    keyVaultProps:{
+      name: !empty(keyVaultName) ? keyVaultName : '${abbrs.keyVaultVaults}${resourceToken}'
+      secretName: computerVisionSecretName
+      principalId:principalId
+    }
     sku: {
       name: computerVisionSkuName
     }
@@ -330,26 +328,6 @@ module storage 'core/storage/storage-account.bicep' = {
         publicAccess: 'None'
       }
     ]
-  }
-}
-
-resource computerVisionResource 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
-  name: computerVisionName
-  scope: computerVisionResourceGroup
-}
-
-module keyvault 'core/security/key-vault.bicep' = {
-  name: 'keyvault'
-  scope: keyVaultResourceGroup
-  dependsOn:[
-    computerVision
-  ]
-  params: {
-    name: !empty(keyVaultName) ? keyVaultName : '${abbrs.keyVaultVaults}${resourceToken}'
-    location: keyVaultResourceGroupLocation
-    secret: computerVisionResource.listKeys().key1
-    secretName: computerVisionSecretName
-    principalId:principalId
   }
 }
 
@@ -424,17 +402,6 @@ module searchSvcContribRoleUser 'core/security/role.bicep' = {
   }
 }
 
-module keyVaultRole 'core/security/role.bicep' = {
-  scope: keyVaultResourceGroup
-  name: 'key-vault-role-backend'
-  params: {
-    principalId: principalId
-    roleDefinitionId: '00482a5a-887f-4fb3-b363-3b7fe8e74483'
-    principalType: 'User'
-  }
-}
-
-
 // SYSTEM IDENTITIES
 module openAiRoleBackend 'core/security/role.bicep' = if (openAiHost == 'azure') {
   scope: openAiResourceGroup
@@ -489,8 +456,8 @@ output OPENAI_ORGANIZATION string = (openAiHost == 'openai') ? openAiApiOrganiza
 
 output AZURE_VISION_ENDPOINT string = computerVision.outputs.endpoint
 
-output VISION_SECRET_NAME string = keyvault.outputs.secretName
-output AZURE_KEY_VAULT_NAME string = keyvault.outputs.name
+output VISION_SECRET_NAME string = computerVision.outputs.keyvaultSecretName
+output AZURE_KEY_VAULT_NAME string = computerVision.outputs.keyVaultName
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

@@ -14,7 +14,7 @@ from azure.search.documents.indexes.models import (
     SemanticSettings,
     SimpleField,
     VectorSearch,
-    VectorSearchAlgorithmConfiguration,
+    HnswVectorSearchAlgorithmConfiguration,
 )
 
 from .blobmanager import BlobManager
@@ -119,7 +119,7 @@ class SearchManager:
                 ),
                 vector_search=VectorSearch(
                     algorithm_configurations=[
-                        VectorSearchAlgorithmConfiguration(
+                        HnswVectorSearchAlgorithmConfiguration(
                             name="default", kind="hnsw", hnsw_parameters=HnswParameters(metric="cosine")
                         )
                     ]

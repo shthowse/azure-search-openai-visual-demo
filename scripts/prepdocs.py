@@ -130,7 +130,7 @@ async def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> Fi
         list_file_strategy=list_file_strategy,
         blob_manager=blob_manager,
         pdf_parser=pdf_parser,
-        text_splitter=TextSplitter(),
+        text_splitter=TextSplitter(has_image_embeddings=args.searchimages),
         document_action=document_action,
         embeddings=embeddings,
         image_embeddings=image_embeddings,

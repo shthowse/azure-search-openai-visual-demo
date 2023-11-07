@@ -9,8 +9,6 @@ if (Test-Path -Path "/usr") {
 Write-Host 'Installing dependencies from "requirements.txt" into virtual environment'
 Start-Process -FilePath $venvPythonPath -ArgumentList "-m pip install -r ./scripts/requirements.txt" -Wait -NoNewWindow
 
-
-
 Write-Host 'Running "prepdocs.py"'
 $cwd = (Get-Location)
 
@@ -49,7 +47,7 @@ if ($env:VISION_SECRET_NAME) {
 
 $dataArg = "`"$cwd/data/*`""
 if ($env:USE_GPTV -eq $true) {
-  $dataArg = "`"$cwd/data/housing-data.pdf`""
+  $dataArg = "`"$cwd/data/GPT4V_Examples/*`""
   $searchImagesArg = "--searchimages"
 }
 $argumentList = "./scripts/prepdocs.py $dataArg $adlsGen2StorageAccountArg $adlsGen2FilesystemArg $adlsGen2FilesystemPathArg $searchAnalyzerNameArg " + `

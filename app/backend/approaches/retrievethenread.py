@@ -48,12 +48,13 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
 
     system_chat_template_gptv = (
         "You are an intelligent assistant helping analyze the Annual Financial Report of Contoso Ltd., The documents contain text, graphs, tables and images. "
+        + "Each image source has the file name in the top left corner of the image with coordinates (10,10) pixels and is in the format SourceFileName:<file_name> "
+        + "Each text source starts in a new line and has the file name followed by colon and the actual information "
+        + "Always include the source name from the image or text for each fact you use in the response in the format: [filename] "
         + "Answer the following question using only the data provided in the sources below. "
         + "For tabular information return it as an html table. Do not return markdown format. "
-        + "Each text source has a name followed by colon and the actual information, always include the source name for each fact you use in the response. [filename]"
-        + "Each image source has the file name in the top left corner of the image with coordinates (10,10) pixels and is in the format SourceFileName:<file_name>, always include the file name in the format [file_name] when a image is used "
         + "The text and image source can be the same file name, don't use the image title when citing the image source, only use the file name as mentioned "
-        + "If you cannot answer using the sources below, say you don't know. Return just the answer without any input texts"
+        + "If you cannot answer using the sources below, say you don't know. Return just the answer without any input texts "
     )
 
     def __init__(
@@ -187,7 +188,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         messages = message_builder.messages
 
         # Chat completion
-        deployment_id = self.gptv_deployment if use_gptv else self.chatgpt_deployment
+        deployment_id = "gpt4v" if use_gptv else self.chatgpt_deployment
         temperature = overrides.get("temperature") or (0.7 if use_gptv else 0.3)
         chatgpt_args = {"deployment_id": deployment_id} if self.openai_host == "azure" else {}
 

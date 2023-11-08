@@ -1,5 +1,5 @@
-from typing import Any
 import unicodedata
+from typing import Any
 
 from .modelhelper import num_tokens_from_messages
 

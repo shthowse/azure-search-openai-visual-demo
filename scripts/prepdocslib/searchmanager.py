@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from azure.search.documents.indexes.models import (
     HnswParameters,
+    HnswVectorSearchAlgorithmConfiguration,
     PrioritizedFields,
     SearchableField,
     SearchField,
@@ -14,7 +15,6 @@ from azure.search.documents.indexes.models import (
     SemanticSettings,
     SimpleField,
     VectorSearch,
-    HnswVectorSearchAlgorithmConfiguration,
 )
 
 from .blobmanager import BlobManager

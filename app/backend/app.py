@@ -38,13 +38,15 @@ from core.authentication import AuthenticationHelper
 CONFIG_OPENAI_TOKEN = "openai_token"
 CONFIG_CREDENTIAL = "azure_credential"
 CONFIG_VISION_KEY = "vision_key"
-CONFIG_ASK_APPROACHES = "ask_approaches"
-CONFIG_CHAT_APPROACHES = "chat_approaches"
 CONFIG_ASK_APPROACH = "ask_approach"
 CONFIG_CHAT_APPROACH = "chat_approach"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
 CONFIG_AUTH_CLIENT = "auth_client"
 CONFIG_SEARCH_CLIENT = "search_client"
+ERROR_MESSAGE = """The app encountered an error processing your request.
+If you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.
+Error type: {error_type}
+"""
 
 bp = Blueprint("routes", __name__, static_folder="static")
 
@@ -98,6 +100,10 @@ async def content_file(path: str):
     return await send_file(blob_file, mimetype=mime_type, as_attachment=False, attachment_filename=path)
 
 
+def error_dict(error: Exception) -> dict:
+    return {"error": ERROR_MESSAGE.format(error_type=type(error))}
+
+
 @bp.route("/ask", methods=["POST"])
 async def ask():
     if not request.is_json:
@@ -129,11 +135,6 @@ async def format_as_ndjson(r: AsyncGenerator[dict, None]) -> AsyncGenerator[str,
         yield json.dumps(error_dict(e))
 
 
-async def format_as_ndjson(r: AsyncGenerator[dict, None]) -> AsyncGenerator[str, None]:
-    async for event in r:
-        yield json.dumps(event, ensure_ascii=False) + "\n"
-
-
 @bp.route("/chat", methods=["POST"])
 async def chat():
     if not request.is_json:
@@ -156,9 +157,9 @@ async def chat():
             response = await make_response(format_as_ndjson(result))
             response.timeout = None  # type: ignore
             return response
-    except Exception as e:
-        logging.exception("Exception in /chat")
-        return jsonify({"error": str(e)}), 500
+    except Exception as error:
+        logging.exception("Exception in /chat: %s", error)
+        return jsonify(error_dict(error)), 500
 
 
 # Send MSAL.js settings to the client UI
@@ -188,8 +189,8 @@ async def setup_clients():
     AZURE_STORAGE_CONTAINER = os.environ["AZURE_STORAGE_CONTAINER"]
     AZURE_SEARCH_SERVICE = os.environ["AZURE_SEARCH_SERVICE"]
     AZURE_SEARCH_INDEX = os.environ["AZURE_SEARCH_INDEX"]
-    VISION_SECRET_NAME = os.environ["VISION_SECRET_NAME"]
-    AZURE_KEY_VAULT_NAME = os.environ["AZURE_KEY_VAULT_NAME"]
+    VISION_SECRET_NAME = os.getenv("VISION_SECRET_NAME")
+    AZURE_KEY_VAULT_NAME = os.getenv("AZURE_KEY_VAULT_NAME")
     # Shared by all OpenAI deployments
     OPENAI_HOST = os.getenv("OPENAI_HOST", "azure")
     OPENAI_CHATGPT_MODEL = os.environ["AZURE_OPENAI_CHATGPT_MODEL"]
@@ -198,8 +199,8 @@ async def setup_clients():
     AZURE_OPENAI_SERVICE = os.getenv("AZURE_OPENAI_SERVICE")
     AZURE_OPENAI_CHATGPT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHATGPT_DEPLOYMENT")
     AZURE_OPENAI_EMB_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMB_DEPLOYMENT")
-    AZURE_OPENAI_GPTV_DEPLOYMENT = os.environ.get("AZURE_OPENAI_GPTV_DEPLOYMENT")
-    AZURE_OPENAI_GPTV_MODEL = os.environ.get("AZURE_OPENAI_GPTV_MODEL")
+    AZURE_OPENAI_GPT4V_DEPLOYMENT = os.environ.get("AZURE_OPENAI_GPT4V_DEPLOYMENT")
+    AZURE_OPENAI_GPT4V_MODEL = os.environ.get("AZURE_OPENAI_GPT4V_MODEL")
     # Used only with non-Azure OpenAI deployments
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     OPENAI_ORGANIZATION = os.getenv("OPENAI_ORGANIZATION")
@@ -243,10 +244,12 @@ async def setup_clients():
     )
     blob_container_client = blob_client.get_container_client(AZURE_STORAGE_CONTAINER)
 
-    key_vault_client = SecretClient(
-        vault_url=f"https://{AZURE_KEY_VAULT_NAME}.vault.azure.net", credential=azure_credential
-    )
-    vision_secret = await key_vault_client.get_secret(VISION_SECRET_NAME)
+    if VISION_SECRET_NAME and AZURE_KEY_VAULT_NAME:  # Cognitive vision keys are stored in keyvault
+        key_vault_client = SecretClient(
+            vault_url=f"https://{AZURE_KEY_VAULT_NAME}.vault.azure.net", credential=azure_credential
+        )
+        vision_secret = await key_vault_client.get_secret(VISION_SECRET_NAME)
+        current_app.config[CONFIG_VISION_KEY] = vision_secret.value
 
     # Used by the OpenAI SDK
     if OPENAI_HOST == "azure":
@@ -266,7 +269,6 @@ async def setup_clients():
     current_app.config[CONFIG_SEARCH_CLIENT] = search_client
     current_app.config[CONFIG_BLOB_CONTAINER_CLIENT] = blob_container_client
     current_app.config[CONFIG_AUTH_CLIENT] = auth_helper
-    current_app.config[CONFIG_VISION_KEY] = vision_secret.value
 
     # Various approaches to integrate GPT and external knowledge, most applications will use a single one of these patterns
     # or some derivative, here we include several for exploration purposes
@@ -276,8 +278,8 @@ async def setup_clients():
         OPENAI_HOST,
         AZURE_OPENAI_CHATGPT_DEPLOYMENT,
         OPENAI_CHATGPT_MODEL,
-        AZURE_OPENAI_GPTV_DEPLOYMENT,
-        AZURE_OPENAI_GPTV_MODEL,
+        AZURE_OPENAI_GPT4V_DEPLOYMENT,
+        AZURE_OPENAI_GPT4V_MODEL,
         AZURE_OPENAI_EMB_DEPLOYMENT,
         OPENAI_EMB_MODEL,
         KB_FIELDS_SOURCEPAGE,

@@ -3,14 +3,14 @@ import { Checkbox, ChoiceGroup, IChoiceGroupOption, Panel, DefaultButton, Spinne
 
 import styles from "./OneShot.module.css";
 
-import { askApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFieldOptions, GPTVInput } from "../../api";
+import { askApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFieldOptions, GPT4VInput } from "../../api";
 import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
 import { AnalysisPanel, AnalysisPanelTabs } from "../../components/AnalysisPanel";
 import { SettingsButton } from "../../components/SettingsButton/SettingsButton";
 import { VectorSettings } from "../../components/VectorSettings";
-import { GPTvSettings } from "../../components/GPTvSettings";
+import { GPT4VSettings } from "../../components/GPT4VSettings";
 
 import { useLogin, getToken } from "../../authConfig";
 import { useMsal } from "@azure/msal-react";
@@ -25,8 +25,8 @@ export function Component(): JSX.Element {
     const [retrieveCount, setRetrieveCount] = useState<number>(3);
     const [useSemanticRanker, setUseSemanticRanker] = useState<boolean>(true);
     const [useSemanticCaptions, setUseSemanticCaptions] = useState<boolean>(false);
-    const [useGPTV, setUseGPTV] = useState<boolean>(false);
-    const [gptVInput, setGptVInput] = useState<GPTVInput>(GPTVInput.TextAndImages);
+    const [useGPT4V, setUseGPT4V] = useState<boolean>(false);
+    const [gpt4vInput, setGPT4VInput] = useState<GPT4VInput>(GPT4VInput.TextAndImages);
     const [excludeCategory, setExcludeCategory] = useState<string>("");
     const [question, setQuestion] = useState<string>("");
     const [vectorFieldList, setVectorFieldList] = useState<VectorFieldOptions[]>([VectorFieldOptions.Embedding, VectorFieldOptions.ImageEmbedding]);
@@ -75,8 +75,8 @@ export function Component(): JSX.Element {
                         use_oid_security_filter: useOidSecurityFilter,
                         use_groups_security_filter: useGroupsSecurityFilter,
                         vector_fields: vectorFieldList,
-                        use_gptv: useGPTV,
-                        gptv_input: gptVInput
+                        use_gpt4v: useGPT4V,
+                        gpt4v_input: gpt4vInput
                     }
                 },
                 // ChatAppProtocol: Client must pass on any session state received from the server
@@ -128,8 +128,8 @@ export function Component(): JSX.Element {
         setQuestion(example);
     };
 
-    const onUseGPTv = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
-        setUseGPTV(!!checked);
+    const onuseGPT4V = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
+        setUseGPT4V(!!checked);
     };
 
     const onShowCitation = (citation: string) => {
@@ -241,17 +241,17 @@ export function Component(): JSX.Element {
                     onChange={onUseSemanticCaptionsChange}
                     disabled={!useSemanticRanker}
                 />
-                <GPTvSettings
-                    gptvInputs={gptVInput}
-                    useGptV={useGPTV}
-                    updateUseGPTv={useGPTv => {
-                        setUseGPTV(useGPTv);
+                <GPT4VSettings
+                    gpt4vInputs={gpt4vInput}
+                    isUseGPT4V={useGPT4V}
+                    updateuseGPT4V={useGPT4V => {
+                        setUseGPT4V(useGPT4V);
                     }}
-                    updateGPTvInputs={inputs => setGptVInput(inputs)}
+                    updateGPT4VInputs={inputs => setGPT4VInput(inputs)}
                 />
 
                 <VectorSettings
-                    showImageOptions={useGPTV}
+                    showImageOptions={useGPT4V}
                     updateVectorFields={(options: VectorFieldOptions[]) => setVectorFieldList(options)}
                     updateRetrievalMode={(retrievalMode: RetrievalMode) => setRetrievalMode(retrievalMode)}
                 />

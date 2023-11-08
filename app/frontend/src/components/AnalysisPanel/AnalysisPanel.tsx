@@ -6,6 +6,7 @@ import styles from "./AnalysisPanel.module.css";
 import { SupportingContent } from "../SupportingContent";
 import { ChatAppResponse } from "../../api";
 import { AnalysisPanelTabs } from "./AnalysisPanelTabs";
+import { ThoughtProcess } from "./ThoughtProcess";
 
 interface Props {
     className: string;
@@ -34,34 +35,7 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, citationHeigh
                 headerText="Thought process"
                 headerButtonProps={isDisabledThoughtProcessTab ? pivotItemDisabledStyle : undefined}
             >
-                <div>
-                    <ul className={styles.tList}>
-                        {answer.choices[0].context.thoughts.map(t => {
-                            return (
-                                <li className={styles.tListItem}>
-                                    <div className={styles.tStep}>{t.title}</div>
-                                    {Array.isArray(t.description) ? (
-                                        <SyntaxHighlighter language="json" wrapLongLines className={styles.tCodeBlock}>
-                                            {JSON.stringify(t.description, null, 2)}
-                                        </SyntaxHighlighter>
-                                    ) : (
-                                        <>
-                                            <div>{t.description}</div>
-                                            <Stack horizontal tokens={{ childrenGap: 5 }}>
-                                                {t.props &&
-                                                    (Object.keys(t.props) || []).map((k: any) => (
-                                                        <span className={styles.tProp}>
-                                                            {k}: {JSON.stringify(t.props?.[k])}
-                                                        </span>
-                                                    ))}
-                                            </Stack>
-                                        </>
-                                    )}
-                                </li>
-                            );
-                        })}
-                    </ul>
-                </div>
+                <ThoughtProcess thoughts={answer.choices[0].context.thoughts || []} />
             </PivotItem>
             <PivotItem
                 itemKey={AnalysisPanelTabs.SupportingContentTab}

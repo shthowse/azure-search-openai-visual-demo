@@ -46,7 +46,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
 """
     answer = "In-network deductibles are $500 for employee and $1000 for family [info1.txt] and Overlake is in-network for the employee plan [info2.pdf][info4.pdf]."
 
-    system_chat_template_gptv = (
+    system_chat_template_gpt4v = (
         "You are an intelligent assistant helping analyze the Annual Financial Report of Contoso Ltd., The documents contain text, graphs, tables and images. "
         + "Each image source has the file name in the top left corner of the image with coordinates (10,10) pixels and is in the format SourceFileName:<file_name> "
         + "Each text source starts in a new line and has the file name followed by colon and the actual information "
@@ -64,8 +64,8 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         openai_host: str,
         chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
         chatgpt_model: str,
-        gptv_deployment: Optional[str],
-        gptv_model: Optional[str],
+        gpt4v_deployment: Optional[str],
+        gpt4v_model: Optional[str],
         embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
         embedding_model: str,
         sourcepage_field: str,
@@ -82,8 +82,8 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
         self.content_field = content_field
-        self.gptv_deployment = gptv_deployment
-        self.gptv_model = gptv_model
+        self.gpt4v_deployment = gpt4v_deployment
+        self.gpt4v_model = gpt4v_model
         self.query_language = query_language
         self.query_speller = query_speller
 
@@ -100,10 +100,10 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
         vector_fields = overrides.get("vector_fields") or []
-        use_gptv = overrides.get("use_gptv")
+        use_gpt4v = overrides.get("use_gpt4v")
 
-        include_gtpV_text = overrides.get("gptv_input") in ["textAndImages", "texts", None]
-        include_gtpV_images = overrides.get("gptv_input") in ["textAndImages", "images", None]
+        include_gtpV_text = overrides.get("gpt4v_input") in ["textAndImages", "texts", None]
+        include_gtpV_images = overrides.get("gpt4v_input") in ["textAndImages", "images", None]
 
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
@@ -161,23 +161,25 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         user_content = [q]
 
         template = overrides.get("prompt_template") or (
-            self.system_chat_template_gptv if use_gptv else self.system_chat_template
+            self.system_chat_template_gpt4v if use_gpt4v else self.system_chat_template
         )
-        model = self.gptv_model if use_gptv else self.chatgpt_model
+        model = self.gpt4v_model if use_gpt4v else self.chatgpt_model
         message_builder = MessageBuilder(template, model)
 
         # Process results
         sources_content = "Sources:\n" + "\n".join([": ".join(result) for result in results])
-        if include_gtpV_text and use_gptv:
+        if include_gtpV_text and use_gpt4v:
             user_content.append(sources_content)
-        if include_gtpV_images and use_gptv:
+        if include_gtpV_images and use_gpt4v:
             image_list.extend(
-                await asyncio.gather(*(fetch_image(self.blob_container_client, result) for result in results))
+                await asyncio.gather(
+                    *({"image": fetch_image(self.blob_container_client, result)} for result in results)
+                )
             )
             user_content.extend(image_list)
 
         # Append user message
-        if use_gptv:
+        if use_gpt4v:
             message_builder.concat_content("user", user_content)
         else:
             user_content = q + "\n" + sources_content
@@ -188,11 +190,11 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         messages = message_builder.messages
 
         # Chat completion
-        deployment_id = "gpt4v" if use_gptv else self.chatgpt_deployment
-        temperature = overrides.get("temperature") or (0.7 if use_gptv else 0.3)
+        deployment_id = "gpt4v" if use_gpt4v else self.chatgpt_deployment
+        temperature = overrides.get("temperature") or (0.7 if use_gpt4v else 0.3)
         chatgpt_args = {"deployment_id": deployment_id} if self.openai_host == "azure" else {}
 
-        if not use_gptv:
+        if not use_gpt4v:
             chatgpt_args["model"] = self.chatgpt_model
 
         chat_completion = await openai.ChatCompletion.acreate(
@@ -204,7 +206,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         )
 
         data_points = {"text": [": ".join(result) for result in results]}
-        if use_gptv:
+        if use_gpt4v:
             data_points["images"] = [d["image"] for d in image_list]
 
         extra_info = {

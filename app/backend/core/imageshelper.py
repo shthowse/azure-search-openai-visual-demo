@@ -13,5 +13,5 @@ async def download_blob_as_base64(blob_container_client: ContainerClient, file_p
     return base64.b64encode(await blob.readall()).decode("utf-8")
 
 
-async def fetch_image(blob_container_client: ContainerClient, result):
-    return {"image": await download_blob_as_base64(blob_container_client, result[0])}
+async def fetch_image(blob_container_client: ContainerClient, result) -> str:
+    return await download_blob_as_base64(blob_container_client, result[0])

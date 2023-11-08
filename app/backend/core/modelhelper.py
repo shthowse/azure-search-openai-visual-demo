@@ -11,7 +11,7 @@ MODELS_2_TOKEN_LIMITS = {
     "gpt-4-32k": 32000,
 }
 
-EXPERIMENTAL_MODELS = ["gptv"]
+EXPERIMENTAL_MODELS = ["gptv", "gpt4v"]
 
 AOAI_2_OAI = {"gpt-35-turbo": "gpt-3.5-turbo", "gpt-35-turbo-16k": "gpt-3.5-turbo-16k"}
 
@@ -46,7 +46,7 @@ def num_tokens_from_messages(message: dict[str, str], model: str) -> int:
     for key, value in message.items():
         if isinstance(value, list):
             for v in value:
-                if isinstance(v, str):  # Its yet to be known how GPTV tokens are calculated for images.
+                if isinstance(v, str):  # Its yet to be known how GPT4V tokens are calculated for images.
                     num_tokens += len(encoding.encode(v))
         else:
             num_tokens += len(encoding.encode(value))

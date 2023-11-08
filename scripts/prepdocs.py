@@ -292,8 +292,6 @@ if __name__ == "__main__":
         required=False,
         help="Required if --searchimages is specified and visionKeyVaultName is provided. Fetch the Azure AI Vision key from this visionKeyVaultName in the key vault instead of the instead of the current user identity to login (use az login to set current user for Azure)",
     )
-    # Fetch vision key using ARM instead of directly using florence api call
-
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -304,7 +302,6 @@ if __name__ == "__main__":
         else AzureDeveloperCliCredential(tenant_id=args.tenantid, process_timeout=60)
     )
 
-    # file_strategy =
     loop = asyncio.get_event_loop()
     file_strategy = loop.run_until_complete(setup_file_strategy(azd_credential, args))
     loop.run_until_complete(main(file_strategy, azd_credential, args))

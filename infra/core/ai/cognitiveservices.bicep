@@ -55,14 +55,6 @@ module keyvault '../security/key-vault.bicep' = if (saveKeysToVault)  {
   }
 }
 
-module keyVaultRole '../security/role.bicep' = if (saveKeysToVault) {
-  name: 'key-vault-role-backend'
-  params: {
-    principalId: keyVaultProps.principalId
-    roleDefinitionId: '00482a5a-887f-4fb3-b363-3b7fe8e74483'
-    principalType: 'User'
-  }
-}
 
 output endpoint string = account.properties.endpoint
 output id string = account.id

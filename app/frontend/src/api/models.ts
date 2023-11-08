@@ -4,7 +4,7 @@ export const enum RetrievalMode {
     Text = "text"
 }
 
-export const enum GPTVInput {
+export const enum GPT4VInput {
     TextAndImages = "textAndImages",
     Images = "images",
     Texts = "texts"
@@ -29,8 +29,8 @@ export type ChatAppRequestOverrides = {
     suggest_followup_questions?: boolean;
     use_oid_security_filter?: boolean;
     use_groups_security_filter?: boolean;
-    use_gptv?: boolean;
-    gptv_input?: GPTVInput;
+    use_gpt4v?: boolean;
+    gpt4v_input?: GPT4VInput;
     vector_fields: VectorFieldOptions[];
 };
 

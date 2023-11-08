@@ -10,9 +10,6 @@ interface Props {
 }
 
 export const ThoughtProcess = ({ thoughts }: Props) => {
-    // console.log(import.meta.env.VITE_AZURE_STORAGE_ACCOUNT); // 123
-    // console.log(import.meta.env.VITE_AZURE_STORAGE_ACCOUNT); // 123
-
     return (
         <ul className={styles.tList}>
             {thoughts.map(t => {

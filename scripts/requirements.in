@@ -10,3 +10,4 @@ tenacity
 azure-keyvault-secrets
 Pillow
 PyMuPDF
+types-Pillow

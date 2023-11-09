@@ -1,4 +1,3 @@
-import asyncio
 import os
 from typing import Any, AsyncGenerator, Optional, Union
 
@@ -171,11 +170,8 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         if include_gtpV_text and use_gpt4v:
             user_content.append(sources_content)
         if include_gtpV_images and use_gpt4v:
-            image_list.extend(
-                await asyncio.gather(
-                    *({"image": fetch_image(self.blob_container_client, result)} for result in results)
-                )
-            )
+            for result in results:
+                image_list.append({"image": await fetch_image(self.blob_container_client, result)})
             user_content.extend(image_list)
 
         # Append user message
@@ -190,7 +186,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         messages = message_builder.messages
 
         # Chat completion
-        deployment_id = "gpt4v" if use_gpt4v else self.chatgpt_deployment
+        deployment_id = self.gpt4v_deployment if use_gpt4v else self.chatgpt_deployment
         temperature = overrides.get("temperature") or (0.7 if use_gpt4v else 0.3)
         chatgpt_args = {"deployment_id": deployment_id} if self.openai_host == "azure" else {}
 

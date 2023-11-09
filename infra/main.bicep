@@ -41,7 +41,7 @@ param openAiServiceName string = ''
 param openAiResourceGroupName string = ''
 param useGPT4V bool = false
 
-param keyVaultName string = ''
+param keyVaultServiceName string = ''
 param computerVisionSecretName string = 'computerVisionSecret'
 
 @description('Location for the OpenAI resource group')
@@ -100,6 +100,7 @@ var abbrs = loadJsonContent('abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
 var computerVisionName = !empty(computerVisionServiceName) ? computerVisionServiceName : '${abbrs.cognitiveServicesComputerVision}${resourceToken}'
+var keyVaultName = !empty(keyVaultServiceName) ? keyVaultServiceName : '${abbrs.keyVaultVaults}${resourceToken}'
 
 // Organize resources in a resource group
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -182,8 +183,8 @@ module backend 'core/host/appservice.bicep' = {
       AZURE_SEARCH_INDEX: searchIndexName
       AZURE_SEARCH_SERVICE: searchService.outputs.name
       AZURE_VISION_ENDPOINT: useGPT4V ? computerVision.outputs.endpoint : ''
-      VISION_SECRET_NAME: useGPT4V ? computerVision.outputs.keyvaultSecretName : ''
-      AZURE_KEY_VAULT_NAME: useGPT4V ? computerVision.outputs.keyVaultName : ''
+      VISION_SECRET_NAME: useGPT4V ? computerVisionSecretName: ''
+      AZURE_KEY_VAULT_NAME: useGPT4V ? keyVaultName: ''
       AZURE_SEARCH_QUERY_LANGUAGE: searchQueryLanguage
       AZURE_SEARCH_QUERY_SPELLER: searchQuerySpeller
       APPLICATIONINSIGHTS_CONNECTION_STRING: useApplicationInsights ? monitoring.outputs.applicationInsightsConnectionString : ''
@@ -287,16 +288,27 @@ module computerVision 'core/ai/cognitiveservices.bicep' = if (useGPT4V) {
     kind: 'ComputerVision'
     location: computerVisionResourceGroupLocation
     tags: tags
-    keyVaultProps: {
-      name: !empty(keyVaultName) ? keyVaultName : '${abbrs.keyVaultVaults}${resourceToken}'
-      secretName: computerVisionSecretName
-      principalId: principalId
-      // backendPrincipalId: backend.outputs.identityPrincipalId
-
-    }
     sku: {
       name: computerVisionSkuName
     }
+  }
+}
+
+
+module keyvault 'core/security/key-vault.bicep' = {
+  scope: computerVisionResourceGroup
+  name: 'keyvault'
+  dependsOn:[
+    computerVision
+    backend
+  ]
+  params: {
+    name: keyVaultName 
+    location: location
+    computerVisionId: computerVision.outputs.id 
+    secretName: computerVisionSecretName
+    principalId: principalId
+    applicationId: backend.outputs.identityPrincipalId
   }
 }
 
@@ -488,8 +500,8 @@ output OPENAI_API_KEY string = (openAiHost == 'openai') ? openAiApiKey : ''
 output OPENAI_ORGANIZATION string = (openAiHost == 'openai') ? openAiApiOrganization : ''
 
 output AZURE_VISION_ENDPOINT string = useGPT4V ? computerVision.outputs.endpoint : ''
-output VISION_SECRET_NAME string = useGPT4V ? computerVision.outputs.keyvaultSecretName : ''
-output AZURE_KEY_VAULT_NAME string = useGPT4V ? computerVision.outputs.keyVaultName : ''
+output VISION_SECRET_NAME string = useGPT4V ? keyvault.outputs.secretName : ''
+output AZURE_KEY_VAULT_NAME string = useGPT4V ? keyvault.outputs.name : ''
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

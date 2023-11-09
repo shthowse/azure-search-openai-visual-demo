@@ -10,13 +10,6 @@ param publicNetworkAccess string = 'Enabled'
 param sku object = {
   name: 'S0'
 }
-param keyVaultProps object = {
-  name:''
-  secretName:''
-  principalId:''
-}
-
-var saveKeysToVault = !empty(keyVaultProps.name) && !empty(keyVaultProps.secretName)
 
 resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: name
@@ -44,21 +37,6 @@ resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01
   }
 }]
 
-module keyvault '../security/key-vault.bicep' = if (saveKeysToVault)  {
-  name: 'keyvault'
-  params: {
-    name: keyVaultProps.name
-    location: location
-    secret: account.listKeys().key1
-    secretName: keyVaultProps.secretName
-    principalId: keyVaultProps.principalId
-  }
-}
-
-
 output endpoint string = account.properties.endpoint
 output id string = account.id
 output name string = account.name
-
-output keyVaultName string = saveKeysToVault ? keyvault.outputs.name : ''
-output keyvaultSecretName string = saveKeysToVault ? keyvault.outputs.secretName : ''

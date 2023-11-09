@@ -4,10 +4,10 @@ param sku object = {
   name: 'standard'
   family: 'A'
 }
-param principalId string = ''
+param principalId string
 param secretName string
-@secure()
-param secret string
+param computerVisionId string
+param applicationId string
 
 resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
   name: name
@@ -28,6 +28,15 @@ resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
         }
         tenantId: tenant().tenantId
       }
+      {
+        objectId: applicationId
+        permissions: {
+          secrets: [
+            'all'
+          ]
+        }
+        tenantId: tenant().tenantId
+      }
     ]
   }
 }
@@ -36,7 +45,7 @@ resource keyVaultSecret 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   parent: keyVault
   name: secretName
   properties: {
-    value: secret
+    value:  listKeys(computerVisionId, '2023-05-01').key1
   }
 }
 

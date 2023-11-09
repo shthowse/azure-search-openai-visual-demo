@@ -4,12 +4,13 @@ import os
 import re
 from typing import List, Optional, Union
 
-import fitz
+import fitz  # type: ignore
 from azure.core.credentials_async import AsyncTokenCredential
 from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient, ContainerClient
 from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader
+from azure.storage.blob import UserDelegationKey
 
 from .listfilestrategy import File
 
@@ -32,7 +33,7 @@ class BlobManager:
         self.container = container
         self.store_page_images = store_page_images
         self.verbose = verbose
-        self.user_delegation_key = None
+        self.user_delegation_key: UserDelegationKey
 
     async def upload_blob(self, file: File) -> Optional[List[str]]:
         async with BlobServiceClient(
@@ -49,6 +50,8 @@ class BlobManager:
 
             if self.store_page_images and os.path.splitext(file.content.name)[1].lower() == ".pdf":
                 return await self.upload_pdf_blob_images(service_client, container_client, file)
+
+        return None
 
     async def upload_pdf_blob_images(
         self, service_client: BlobServiceClient, container_client: ContainerClient, file: File
@@ -67,7 +70,7 @@ class BlobManager:
             doc = fitz.open(file.content.name)
             page = doc.load_page(i)
             pix = page.get_pixmap()
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)  # type: ignore
             # Write source on the image so we can provide citations
             font = ImageFont.truetype("arial.ttf", 20)
             draw = ImageDraw.Draw(img)
@@ -79,18 +82,20 @@ class BlobManager:
             img.save(output, format="PNG")
             output.seek(0)
             blob_client = await container_client.upload_blob(blob_name, output, overwrite=True)
-            if self.user_delegation_key is None:
+            if not self.user_delegation_key:
                 self.user_delegation_key = await service_client.get_user_delegation_key(start_time, expiry_time)
-            sas_token = generate_blob_sas(
-                account_name=blob_client.account_name,
-                container_name=blob_client.container_name,
-                blob_name=blob_client.blob_name,
-                user_delegation_key=self.user_delegation_key,
-                permission=BlobSasPermissions(read=True),
-                expiry=expiry_time,
-                start=start_time,
-            )
-            sas_uris.append(f"{blob_client.url}?{sas_token}")
+
+            if blob_client.account_name is not None:
+                sas_token = generate_blob_sas(
+                    account_name=blob_client.account_name,
+                    container_name=blob_client.container_name,
+                    blob_name=blob_client.blob_name,
+                    user_delegation_key=self.user_delegation_key,
+                    permission=BlobSasPermissions(read=True),
+                    expiry=expiry_time,
+                    start=start_time,
+                )
+                sas_uris.append(f"{blob_client.url}?{sas_token}")
 
         return sas_uris
 

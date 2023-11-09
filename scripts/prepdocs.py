@@ -89,6 +89,7 @@ async def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> Fi
                     vault_url=f"https://{args.visionKeyVaultName}.vault.azure.net", credential=credential
                 )
                 visionkey = await key_vault_client.get_secret(args.visionKeyVaultkey)
+                key = visionkey.value or ""
             else:
                 print(
                     "Error: Please provide --visionkey or --visionKeyVaultName and --visionKeyVaultkey when using --searchimages."
@@ -98,10 +99,11 @@ async def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> Fi
         if not args.visionendpoint:
             print("Error: Please provide --visionendpoint when using --searchimages.")
             exit(1)
+        else:
+            key = args.visionkey
 
-        image_embeddings = ImageEmbeddings(
-            credential=args.visionkey or visionkey.value, endpoint=args.visionendpoint, verbose=args.verbose
-        )
+        if key:
+            image_embeddings = ImageEmbeddings(credential=key, endpoint=args.visionendpoint, verbose=args.verbose)
 
     print("Processing files...")
     list_file_strategy: ListFileStrategy

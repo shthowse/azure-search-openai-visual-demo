@@ -72,7 +72,7 @@ class FileStrategy(Strategy):
                     blob_sas_uris = await self.blob_manager.upload_blob(file)
                     if self.image_embeddings and blob_sas_uris:
                         image_embeddings = await self.image_embeddings.create_embeddings(blob_sas_uris)
-                    await search_manager.update_content(sections, image_embeddings)
+                        await search_manager.update_content(sections, image_embeddings)
                 finally:
                     if file:
                         file.close()

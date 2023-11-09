@@ -29,6 +29,23 @@ def is_key_empty(key):
     return key is None or len(key.strip()) == 0
 
 
+async def get_vision_key(credential: AsyncTokenCredential) -> Optional[str]:
+    if args.visionkey:
+        return args.visionkey
+
+    if args.visionKeyVaultName and args.visionKeyVaultkey:
+        key_vault_client = SecretClient(
+            vault_url=f"https://{args.visionKeyVaultName}.vault.azure.net", credential=credential
+        )
+        visionkey = await key_vault_client.get_secret(args.visionKeyVaultkey)
+        return visionkey.value
+    else:
+        print(
+            "Error: Please provide --visionkey or --visionKeyVaultName and --visionKeyVaultkey when using --searchimages."
+        )
+        exit(1)
+
+
 async def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> FileStrategy:
     storage_creds = credential if is_key_empty(args.storagekey) else args.storagekey
     blob_manager = BlobManager(
@@ -82,28 +99,12 @@ async def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> Fi
         )
 
     image_embeddings: Optional[ImageEmbeddings] = None
+
     if args.searchimages:
-        if not args.visionkey:
-            if args.visionKeyVaultName and args.visionKeyVaultkey:
-                key_vault_client = SecretClient(
-                    vault_url=f"https://{args.visionKeyVaultName}.vault.azure.net", credential=credential
-                )
-                visionkey = await key_vault_client.get_secret(args.visionKeyVaultkey)
-                key = visionkey.value or ""
-            else:
-                print(
-                    "Error: Please provide --visionkey or --visionKeyVaultName and --visionKeyVaultkey when using --searchimages."
-                )
-                exit(1)
-
-        if not args.visionendpoint:
-            print("Error: Please provide --visionendpoint when using --searchimages.")
-            exit(1)
-        else:
-            key = args.visionkey
-
-        if key:
-            image_embeddings = ImageEmbeddings(credential=key, endpoint=args.visionendpoint, verbose=args.verbose)
+        key = await get_vision_key(credential)
+        image_embeddings = (
+            ImageEmbeddings(credential=key, endpoint=args.visionendpoint, verbose=args.verbose) if key else None
+        )
 
     print("Processing files...")
     list_file_strategy: ListFileStrategy

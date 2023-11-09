@@ -10,7 +10,6 @@ from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient, ContainerClient
 from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader
-from azure.storage.blob import UserDelegationKey
 
 from .listfilestrategy import File
 
@@ -33,7 +32,7 @@ class BlobManager:
         self.container = container
         self.store_page_images = store_page_images
         self.verbose = verbose
-        self.user_delegation_key: UserDelegationKey
+        self.user_delegation_key = None  # type: ignore
 
     async def upload_blob(self, file: File) -> Optional[List[str]]:
         async with BlobServiceClient(

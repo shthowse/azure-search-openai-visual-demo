@@ -6,7 +6,7 @@ from typing import List, Optional, Union
 
 import fitz  # type: ignore
 from azure.core.credentials_async import AsyncTokenCredential
-from azure.storage.blob import BlobSasPermissions, generate_blob_sas
+from azure.storage.blob import BlobSasPermissions, UserDelegationKey, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient, ContainerClient
 from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader
@@ -32,7 +32,7 @@ class BlobManager:
         self.container = container
         self.store_page_images = store_page_images
         self.verbose = verbose
-        self.user_delegation_key = None  # type: ignore
+        self.user_delegation_key: Optional[UserDelegationKey] = None
 
     async def upload_blob(self, file: File) -> Optional[List[str]]:
         async with BlobServiceClient(

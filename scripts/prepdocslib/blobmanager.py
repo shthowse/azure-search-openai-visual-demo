@@ -62,24 +62,38 @@ class BlobManager:
         sas_uris = []
         start_time = datetime.datetime.now(datetime.timezone.utc)
         expiry_time = start_time + datetime.timedelta(days=1)
+
         for i in range(page_count):
             blob_name = BlobManager.blob_image_name_from_file_page(file.content.name, i)
             if self.verbose:
                 print(f"\tConverting page {i} to image and uploading -> {blob_name}")
+
             doc = fitz.open(file.content.name)
             page = doc.load_page(i)
             pix = page.get_pixmap()
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)  # type: ignore
-            # Write source on the image so we can provide citations
+            original_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)  # type: ignore
+
+            # Create a new image with additional space for text
+            text_height = 40  # Height of the text area
+            new_img = Image.new("RGB", (original_img.width, original_img.height + text_height), "white")
+
+            # Paste the original image onto the new image
+            new_img.paste(original_img, (0, text_height))
+
+            # Draw the text on the white area
             font = ImageFont.truetype("arial.ttf", 20)
-            draw = ImageDraw.Draw(img)
-            # Position text at the top left
+            draw = ImageDraw.Draw(new_img)
+            text = f"SourceFileName:{blob_name}"
+
+            # 10 pixels from the top and left of the image
             x = 10
             y = 10
-            draw.text((x, y), f"SourceFileName:{blob_name}", font=font, fill="black")
+            draw.text((x, y), text, font=font, fill="black")
+
             output = io.BytesIO()
-            img.save(output, format="PNG")
+            new_img.save(output, format="PNG")
             output.seek(0)
+
             blob_client = await container_client.upload_blob(blob_name, output, overwrite=True)
             if not self.user_delegation_key:
                 self.user_delegation_key = await service_client.get_user_delegation_key(start_time, expiry_time)

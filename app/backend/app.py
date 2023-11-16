@@ -37,6 +37,7 @@ from core.authentication import AuthenticationHelper
 CONFIG_OPENAI_TOKEN = "openai_token"
 CONFIG_CREDENTIAL = "azure_credential"
 CONFIG_VISION_KEY = "vision_key"
+CONFIG_VISION_ENDPOINT = "vision_endpoint"
 CONFIG_ASK_APPROACH = "ask_approach"
 CONFIG_CHAT_APPROACH = "chat_approach"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
@@ -249,14 +250,15 @@ async def setup_clients():
         )
         vision_secret = await key_vault_client.get_secret(VISION_SECRET_NAME)
         current_app.config[CONFIG_VISION_KEY] = vision_secret.value
+        current_app.config[CONFIG_VISION_ENDPOINT] = os.getenv("AZURE_VISION_ENDPOINT")
 
     # Used by the OpenAI SDK
     if OPENAI_HOST == "azure":
-        openai.api_type = "azure_ad"
+        openai.api_type = "azure_ad" if OPENAI_API_KEY is None else "azure"
         openai.api_base = f"https://{AZURE_OPENAI_SERVICE}.openai.azure.com"
         openai.api_version = "2023-07-01-preview"
         openai_token = await azure_credential.get_token("https://cognitiveservices.azure.com/.default")
-        openai.api_key = openai_token.token
+        openai.api_key = OPENAI_API_KEY if OPENAI_API_KEY is not None else openai_token.token
         # Store on app.config for later use inside requests
         current_app.config[CONFIG_OPENAI_TOKEN] = openai_token
     else:

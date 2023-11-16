@@ -4,11 +4,10 @@ import os
 import aiohttp
 from quart import current_app
 
-
 async def generate_image_embeddings(text):
-    endpoint = f"{os.environ['AZURE_VISION_ENDPOINT']}computervision/retrieval:vectorizeText"
+    endpoint = f"{current_app.config['vision_endpoint']}computervision/retrieval:vectorizeText"
     params = {"api-version": "2023-02-01-preview", "modelVersion": "latest"}
-    headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": current_app.config["vision_key"]}
+    headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": current_app.config['vision_key']}
     data = {"text": text}
 
     async with aiohttp.ClientSession() as session:

@@ -103,7 +103,7 @@ pyjwt[crypto]==2.8.0
     # via
     #   msal
     #   pyjwt
-pypdf==3.17.0
+pypdf==3.17.1
     # via -r requirements.in
 python-dateutil==2.8.2
     # via pandas

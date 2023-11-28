@@ -34,12 +34,12 @@ export const GPT4VSettings = ({ updateGPT4VInputs, updateuseGPT4V, isUseGPT4V, g
 
     return (
         <Stack className={styles.container} tokens={{ childrenGap: 10 }}>
-            <Checkbox checked={useGPT4V} label="Use GPT4-V" onChange={onuseGPT4V} />
+            <Checkbox checked={useGPT4V} label="Use GPT-4 Turbo with Vision" onChange={onuseGPT4V} />
             {useGPT4V && (
                 <Dropdown
                     selectedKey={vectorFieldOption}
                     className={styles.oneshotSettingsSeparator}
-                    label="GPT4-V Inputs"
+                    label="GPT-4 Turbo with Vision Inputs"
                     options={[
                         {
                             key: GPT4VInput.TextAndImages,

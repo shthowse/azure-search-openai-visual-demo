@@ -5,7 +5,8 @@ import mimetypes
 import os
 import time
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, cast
+import dataclasses
 
 import aiohttp
 import openai
@@ -30,8 +31,10 @@ from quart import (
 )
 from quart_cors import cors
 
+from approaches.approach import Approach
 from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
 from approaches.retrievethenread import RetrieveThenReadApproach
+from approaches.retrievethenreadvision import RetrieveThenReadVisionApproach
 from core.authentication import AuthenticationHelper
 
 CONFIG_OPENAI_TOKEN = "openai_token"
@@ -39,6 +42,7 @@ CONFIG_CREDENTIAL = "azure_credential"
 CONFIG_VISION_KEY = "vision_key"
 CONFIG_VISION_ENDPOINT = "vision_endpoint"
 CONFIG_ASK_APPROACH = "ask_approach"
+CONFIG_ASK_VISION_APPROACH = "ask_vision_approach"
 CONFIG_CHAT_APPROACH = "chat_approach"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
 CONFIG_AUTH_CLIENT = "auth_client"
@@ -113,7 +117,12 @@ async def ask():
     auth_helper = current_app.config[CONFIG_AUTH_CLIENT]
     context["auth_claims"] = await auth_helper.get_auth_claims_if_enabled(request.headers)
     try:
-        approach = current_app.config[CONFIG_ASK_APPROACH]
+        use_gpt4v = context.get("overrides", {}).get("use_gpt4v", False)
+        approach: Approach
+        if use_gpt4v and CONFIG_ASK_VISION_APPROACH in current_app.config:
+            approach = cast(Approach, current_app.config[CONFIG_ASK_VISION_APPROACH])
+        else:
+            approach = cast(Approach, current_app.config[CONFIG_ASK_APPROACH])
         # Workaround for: https://github.com/openai/openai-python/issues/371
         async with aiohttp.ClientSession() as s:
             openai.aiosession.set(s)
@@ -125,11 +134,16 @@ async def ask():
         logging.exception("Exception in /ask: %s", error)
         return jsonify(error_dict(error)), 500
 
+class JSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if dataclasses.is_dataclass(o):
+            return dataclasses.asdict(o)
+        return super().default(o)
 
 async def format_as_ndjson(r: AsyncGenerator[dict, None]) -> AsyncGenerator[str, None]:
     try:
         async for event in r:
-            yield json.dumps(event, ensure_ascii=False) + "\n"
+            yield json.dumps(event, ensure_ascii=False, cls=JSONEncoder) + "\n"
     except Exception as e:
         logging.exception("Exception while generating response stream: %s", e)
         yield json.dumps(error_dict(e))
@@ -279,8 +293,6 @@ async def setup_clients():
         OPENAI_HOST,
         AZURE_OPENAI_CHATGPT_DEPLOYMENT,
         OPENAI_CHATGPT_MODEL,
-        AZURE_OPENAI_GPT4V_DEPLOYMENT,
-        AZURE_OPENAI_GPT4V_MODEL,
         AZURE_OPENAI_EMB_DEPLOYMENT,
         OPENAI_EMB_MODEL,
         KB_FIELDS_SOURCEPAGE,
@@ -288,6 +300,21 @@ async def setup_clients():
         AZURE_SEARCH_QUERY_LANGUAGE,
         AZURE_SEARCH_QUERY_SPELLER,
     )
+
+    if AZURE_OPENAI_GPT4V_MODEL:
+        current_app.config[CONFIG_ASK_VISION_APPROACH] = RetrieveThenReadVisionApproach(
+            search_client,
+            blob_container_client,
+            OPENAI_HOST,
+            AZURE_OPENAI_GPT4V_DEPLOYMENT,
+            AZURE_OPENAI_GPT4V_MODEL,
+            AZURE_OPENAI_EMB_DEPLOYMENT,
+            OPENAI_EMB_MODEL,
+            KB_FIELDS_SOURCEPAGE,
+            KB_FIELDS_CONTENT,
+            AZURE_SEARCH_QUERY_LANGUAGE,
+            AZURE_SEARCH_QUERY_SPELLER,
+        )
 
     current_app.config[CONFIG_CHAT_APPROACH] = ChatReadRetrieveReadApproach(
         search_client,

@@ -3,7 +3,7 @@ from typing import Any, AsyncGenerator, Optional, Union
 
 import openai
 from azure.search.documents.aio import SearchClient
-from azure.storage.blob import ContainerClient
+from azure.storage.blob.aio import ContainerClient
 
 from approaches.approach import Approach, ThoughtStep
 from core.imageshelper import fetch_image
@@ -15,41 +15,31 @@ AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT")
 AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER")
 
 
-class RetrieveThenReadApproach(Approach):
+class RetrieveThenReadVisionApproach(Approach):
     """
     Simple retrieve-then-read implementation, using the Cognitive Search and OpenAI APIs directly. It first retrieves
-    top documents from search, then constructs a prompt with them, and then uses OpenAI to generate an completion
+    top documents including images from search, then constructs a prompt with them, and then uses OpenAI to generate an completion
     (answer) with that prompt.
     """
 
-    system_chat_template = (
-        "You are an intelligent assistant helping Contoso Inc employees with their healthcare plan questions and employee handbook questions. "
-        + "Use 'you' to refer to the individual asking the questions even if they ask with 'I'. "
+    system_chat_template_gpt4v = (
+        "You are an intelligent assistant helping analyze the Annual Financial Report of Contoso Ltd., The documents contain text, graphs, tables and images. "
+        + "Each image source has the file name in the top left corner of the image with coordinates (10,10) pixels and is in the format SourceFileName:<file_name> "
+        + "Each text source starts in a new line and has the file name followed by colon and the actual information "
+        + "Always include the source name from the image or text for each fact you use in the response in the format: [filename] "
         + "Answer the following question using only the data provided in the sources below. "
         + "For tabular information return it as an html table. Do not return markdown format. "
-        + "Each source has a name followed by colon and the actual information, always include the source name for each fact you use in the response. "
-        + "If you cannot answer using the sources below, say you don't know. Use below example to answer"
+        + "The text and image source can be the same file name, don't use the image title when citing the image source, only use the file name as mentioned "
+        + "If you cannot answer using the sources below, say you don't know. Return just the answer without any input texts "
     )
-
-    # shots/sample conversation
-    question = """
-'What is the deductible for the employee plan for a visit to Overlake in Bellevue?'
-
-Sources:
-info1.txt: deductibles depend on whether you are in-network or out-of-network. In-network deductibles are $500 for employee and $1000 for family. Out-of-network deductibles are $1000 for employee and $2000 for family.
-info2.pdf: Overlake is in-network for the employee plan.
-info3.pdf: Overlake is the name of the area that includes a park and ride near Bellevue.
-info4.pdf: In-network institutions include Overlake, Swedish and others in the region
-"""
-    answer = "In-network deductibles are $500 for employee and $1000 for family [info1.txt] and Overlake is in-network for the employee plan [info2.pdf][info4.pdf]."
 
     def __init__(
         self,
         search_client: SearchClient,
         blob_container_client: ContainerClient,
         openai_host: str,
-        chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
-        chatgpt_model: str,
+        gpt4v_deployment: Optional[str],
+        gpt4v_model: str,
         embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
         embedding_model: str,
         sourcepage_field: str,
@@ -60,12 +50,12 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         self.search_client = search_client
         self.blob_container_client = blob_container_client
         self.openai_host = openai_host
-        self.chatgpt_deployment = chatgpt_deployment
-        self.chatgpt_model = chatgpt_model
         self.embedding_model = embedding_model
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
         self.content_field = content_field
+        self.gpt4v_deployment = gpt4v_deployment
+        self.gpt4v_model = gpt4v_model
         self.query_language = query_language
         self.query_speller = query_speller
 
@@ -82,6 +72,9 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
 
+        include_gtpV_text = overrides.get("gpt4v_input") in ["textAndImages", "texts", None]
+        include_gtpV_images = overrides.get("gpt4v_input") in ["textAndImages", "images", None]
+
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
         filter = self.build_filter(overrides, auth_claims)
@@ -92,6 +85,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         vectors = []
         if has_vector:
             vectors.append(await self.compute_text_embedding(q))
+            vectors.append(await self.compute_image_embedding(q))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
         query_text=q if has_text else None
@@ -105,29 +99,32 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             use_semantic_captions
         )
 
+        image_list = []
         user_content = [q]
 
-        template = overrides.get("prompt_template") or self.system_chat_template
-        model = self.chatgpt_model
+        template = overrides.get("prompt_template") or (
+            self.system_chat_template_gpt4v
+        )
+        model = self.gpt4v_model
         message_builder = MessageBuilder(template, model)
 
         # Process results
-        sources_content = "Sources:\n" + "\n".join((result.content or "" for result in results))
+        sources_content = "Sources:\n" + "\n".join([result.content or "" for result in results])
+        if include_gtpV_text:
+            user_content.append(sources_content)
+        if include_gtpV_images:
+            for result in results:
+                image_list.append({"image": await fetch_image(self.blob_container_client, result)})
+            user_content.extend(image_list)
 
         # Append user message
-        user_content = q + "\n" + sources_content
-        message_builder.insert_message("user", user_content)
-        message_builder.insert_message("assistant", self.answer)
-        message_builder.insert_message("user", self.question)
-
+        message_builder.concat_content("user", user_content)
         messages = message_builder.messages
 
         # Chat completion
-        deployment_id = self.chatgpt_deployment
-        temperature = overrides.get("temperature") or 0.3
+        deployment_id = self.gpt4v_deployment
+        temperature = overrides.get("temperature") or 0.7
         chatgpt_args = {"deployment_id": deployment_id} if self.openai_host == "azure" else {}
-
-        chatgpt_args["model"] = self.chatgpt_model
 
         chat_completion = await openai.ChatCompletion.acreate(
             **chatgpt_args,
@@ -137,7 +134,10 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             n=1,
         )
 
-        data_points = {"text": [result.content or "" for result in results]}
+        data_points = {
+            "text": [result.content or "" for result in results],
+            "images": [d["image"] for d in image_list]
+        }
 
         extra_info = {
             "data_points": data_points,

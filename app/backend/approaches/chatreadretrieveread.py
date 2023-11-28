@@ -6,10 +6,8 @@ from typing import Any, AsyncGenerator, Optional, Union
 import aiohttp
 import openai
 from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import QueryType, Vector
 
-from approaches.approach import Approach
-from core.embeddingshelper import serialize_data
+from approaches.approach import Approach, ThoughtStep
 from core.messagebuilder import MessageBuilder
 from core.modelhelper import get_token_limit
 from text import nonewlines
@@ -96,6 +94,7 @@ If you cannot generate a search query, return just the number 0.
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
         filter = self.build_filter(overrides, auth_claims)
+        use_semantic_ranker= True if overrides.get("semantic_ranker") and has_text else False
 
         original_user_query = history[-1]["content"]
         user_query_request = "Generate search query for: " + original_user_query
@@ -143,53 +142,25 @@ If you cannot generate a search query, return just the number 0.
 
         # STEP 2: Retrieve relevant documents from the search index with the GPT optimized query
 
-        # If retrieval mode includes vectors, compute an embedding for the query
+        # If retrieval mode includes vectors, compute an embeddings for the query
         vectors = []
         if has_vector:
-            embedding_args = {"deployment_id": self.embedding_deployment} if self.openai_host == "azure" else {}
-            embedding = await openai.Embedding.acreate(**embedding_args, model=self.embedding_model, input=query_text)
-            query_vector = embedding["data"][0]["embedding"]
-            vectors.append(Vector(value=query_vector, k=50, fields="embedding"))
+            vectors.append(await self.compute_text_embedding(query_text))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
         if not has_text:
             query_text = None
 
-        # Use semantic L2 reranker if requested and if retrieval mode is text or hybrid (vectors + text)
-        if overrides.get("semantic_ranker") and has_text:
-            r = await self.search_client.search(
-                query_text,
-                filter=filter,
-                query_type=QueryType.SEMANTIC,
-                query_language=self.query_language,
-                query_speller=self.query_speller,
-                semantic_configuration_name="default",
-                top=top,
-                query_caption="extractive|highlight-false" if use_semantic_captions else None,
-                vectors=vectors,
-            )
-        else:
-            r = await self.search_client.search(
-                query_text,
-                filter=filter,
-                top=top,
-                vectors=vectors,
-            )
+        results = await self.search(
+            top,
+            query_text,
+            filter,
+            vectors,
+            use_semantic_ranker,
+            use_semantic_captions
+        )
 
-        results = []
-        trimmed_results = []
-
-        async for page in r.by_page():
-            async for doc in page:
-                if use_semantic_captions:
-                    caption_text = " . ".join([c.text for c in doc["@search.captions"]])
-                    results.append((doc[self.sourcepage_field], nonewlines(caption_text)))
-                else:
-                    results.append((doc[self.sourcepage_field], nonewlines(doc[self.content_field])))
-
-                trimmed_results.append(serialize_data(doc))
-
-        content = "\n".join([": ".join(result) for result in results])
+        content = "\n".join((result.content or "" for result in results))
 
         follow_up_questions_prompt = (
             self.follow_up_questions_prompt_content if overrides.get("suggest_followup_questions") else ""
@@ -221,24 +192,21 @@ If you cannot generate a search query, return just the number 0.
             max_tokens=messages_token_limit,
         )
 
-        data_points = {"text": [": ".join(result) for result in results]}
+        data_points = {"text": [result.content or "" for result in results]}
 
         extra_info = {
             "data_points": data_points,
             "thoughts": [
-                {
-                    "title": "Search Query",
-                    "description": query_text,
-                    "props": {"semanticCaptions": use_semantic_captions},
-                },
-                {
-                    "title": "Results",
-                    "description": trimmed_results,
-                },
-                {
-                    "title": "Prompt",
-                    "description": [str(message) for message in messages],
-                },
+                ThoughtStep(
+                    "Search Query",
+                    query_text,
+                    {
+                        "semanticCaptions": use_semantic_captions,
+                        "Model ID": self.chatgpt_deployment,
+                    },
+                ),
+                ThoughtStep("Results", [result.serialize_for_results() for result in results]),
+                ThoughtStep("Prompt", [str(message) for message in messages]),
             ],
         }
 

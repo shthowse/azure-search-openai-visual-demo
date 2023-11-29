@@ -11,14 +11,14 @@ MODELS_2_TOKEN_LIMITS = {
     "gpt-4-32k": 32000,
 }
 
-EXPERIMENTAL_MODELS = ["gptv", "gpt4v"]
+EXPERIMENTAL_MODELS = ["gptv", "gpt4v", "gpt-4v"]
 
 AOAI_2_OAI = {"gpt-35-turbo": "gpt-3.5-turbo", "gpt-35-turbo-16k": "gpt-3.5-turbo-16k"}
 
 
 def get_token_limit(model_id: str) -> int:
-    if not model_id:
-        return None
+    if not model_id or model_id in EXPERIMENTAL_MODELS:
+        return 32000  # TODO: Fix this.
     if model_id not in MODELS_2_TOKEN_LIMITS:
         raise ValueError(f"Expected model gpt-35-turbo and above. Received: {model_id}")
     return MODELS_2_TOKEN_LIMITS[model_id]

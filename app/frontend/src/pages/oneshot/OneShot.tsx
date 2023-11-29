@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Checkbox, ChoiceGroup, IChoiceGroupOption, Panel, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption, Dropdown } from "@fluentui/react";
+import { Checkbox, Panel, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption, Dropdown } from "@fluentui/react";
 
 import styles from "./OneShot.module.css";
 
@@ -126,10 +126,6 @@ export function Component(): JSX.Element {
     const onExampleClicked = (example: string) => {
         makeApiRequest(example);
         setQuestion(example);
-    };
-
-    const onuseGPT4V = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
-        setUseGPT4V(!!checked);
     };
 
     const onShowCitation = (citation: string) => {

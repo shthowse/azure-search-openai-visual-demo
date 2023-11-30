@@ -375,7 +375,7 @@ const Chat = () => {
                     <GPT4VSettings
                         gpt4vInputs={gpt4vInput}
                         isUseGPT4V={useGPT4V}
-                        updateuseGPT4V={useGPT4V => {
+                        updateUseGPT4V={useGPT4V => {
                             setUseGPT4V(useGPT4V);
                         }}
                         updateGPT4VInputs={inputs => setGPT4VInput(inputs)}

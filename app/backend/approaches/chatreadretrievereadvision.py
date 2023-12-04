@@ -3,14 +3,16 @@ from typing import Any, Optional
 
 import openai
 from azure.search.documents.aio import SearchClient
+from azure.storage.blob.aio import ContainerClient
 
 from approaches.approach import ThoughtStep
 from approaches.chatapproach import ChatApproach
+from core.imageshelper import fetch_image
 from core.messagebuilder import MessageBuilder
 from core.modelhelper import get_token_limit
 
 
-class ChatReadRetrieveReadApproach(ChatApproach):
+class ChatReadRetrieveReadVisionApproach(ChatApproach):
 
     """
     A multi-step approach that first uses OpenAI to turn the user's question into a search query,
@@ -21,7 +23,10 @@ class ChatReadRetrieveReadApproach(ChatApproach):
     def __init__(
         self,
         search_client: SearchClient,
+        blob_container_client: ContainerClient,
         openai_host: str,
+        gpt4v_deployment: Optional[str],  # Not needed for non-Azure OpenAI
+        gpt4v_model: str,
         chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
         chatgpt_model: str,
         embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
@@ -32,7 +37,10 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         query_speller: str,
     ):
         self.search_client = search_client
+        self.blob_container_client = blob_container_client
         self.openai_host = openai_host
+        self.gpt4v_deployment = gpt4v_deployment
+        self.gpt4v_model = gpt4v_model
         self.chatgpt_deployment = chatgpt_deployment
         self.chatgpt_model = chatgpt_model
         self.embedding_deployment = embedding_deployment
@@ -41,14 +49,21 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         self.content_field = content_field
         self.query_language = query_language
         self.query_speller = query_speller
-        self.chatgpt_token_limit = get_token_limit(chatgpt_model)
+        self.chatgpt_token_limit = get_token_limit(gpt4v_model)
 
     @property
     def system_message_chat_conversation(self):
-        return """Assistant helps the company employees with their healthcare plan questions, and questions about the employee handbook. Be brief in your answers.
-        Answer ONLY with the facts listed in the list of sources below. If there isn't enough information below, say you don't know. Do not generate answers that don't use the sources below. If asking a clarifying question to the user would help, ask the question.
-        For tabular information return it as an html table. Do not return markdown format. If the question is not in English, answer in the language used in the question.
-        Each source has a name followed by colon and the actual information, always include the source name for each fact you use in the response. Use square brackets to reference the source, for example [info1.txt]. Don't combine sources, list each source separately, for example [info1.txt][info2.pdf].
+        return """
+        You are an intelligent assistant helping analyze the Annual Financial Report of Contoso Ltd., The documents contain text, graphs, tables and images.
+        Each image source has the file name in the top left corner of the image with coordinates (10,10) pixels and is in the format SourceFileName:<file_name>
+        Each text source starts in a new line and has the file name followed by colon and the actual information
+        Always include the source name from the image or text for each fact you use in the response in the format: [filename]
+        Answer the following question using only the data provided in the sources below.
+        If asking a clarifying question to the user would help, ask the question.
+        Be brief in your answers.
+        For tabular information return it as an html table. Do not return markdown format.
+        The text and image source can be the same file name, don't use the image title when citing the image source, only use the file name as mentioned
+        If you cannot answer using the sources below, say you don't know. Return just the answer without any input texts. 
         {follow_up_questions_prompt}
         {injected_prompt}
         """
@@ -67,46 +82,30 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         filter = self.build_filter(overrides, auth_claims)
         use_semantic_ranker = True if overrides.get("semantic_ranker") and has_text else False
 
-        original_user_query = history[-1]["content"]
-        user_query_request = "Generate search query for: " + original_user_query
+        include_gtpV_text = overrides.get("gpt4v_input") in ["textAndImages", "texts", None]
+        include_gtpV_images = overrides.get("gpt4v_input") in ["textAndImages", "images", None]
 
-        functions = [
-            {
-                "name": "search_sources",
-                "description": "Retrieve sources from the Azure AI Search index",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "search_query": {
-                            "type": "string",
-                            "description": "Query string to retrieve documents from azure search eg: 'Health care plan'",
-                        }
-                    },
-                    "required": ["search_query"],
-                },
-            }
-        ]
+        original_user_query = history[-1]["content"]
 
         # STEP 1: Generate an optimized keyword search query based on the chat history and the last question
+        user_query_request = ["Generate search query for: " + original_user_query]
         messages = self.get_messages_from_history(
             system_prompt=self.query_prompt_template,
             model_id=self.chatgpt_model,
             history=history,
             user_content=user_query_request,
-            max_tokens=self.chatgpt_token_limit - len(user_query_request),
+            max_tokens=self.chatgpt_token_limit - len(" ".join(user_query_request)),
             few_shots=self.query_prompt_few_shots,
         )
 
-        chatgpt_args = {"deployment_id": self.chatgpt_deployment} if self.openai_host == "azure" else {}
+        chatgpt_args = {"deployment_id": self.gpt4v_deployment} if self.openai_host == "azure" else {}
+
         chat_completion = await openai.ChatCompletion.acreate(
             **chatgpt_args,
-            model=self.chatgpt_model,
             messages=messages,
             temperature=0.0,
             max_tokens=100,  # Setting too low risks malformed JSON, setting too high may affect performance
             n=1,
-            functions=functions,
-            function_call="auto",
         )
 
         query_text = self.get_search_query(chat_completion, original_user_query)
@@ -124,7 +123,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
 
         results = await self.search(top, query_text, filter, vectors, use_semantic_ranker, use_semantic_captions)
 
-        content = "\n".join((result.content or "" for result in results))
+        content = "\n".join(result.content or "" for result in results)
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
 
@@ -136,16 +135,26 @@ class ChatReadRetrieveReadApproach(ChatApproach):
 
         response_token_limit = 1024
         messages_token_limit = self.chatgpt_token_limit - response_token_limit
+
+        user_content = [original_user_query]
+        image_list = []
+
+        if include_gtpV_text:
+            user_content.append("\n\nSources:\n" + content)
+        if include_gtpV_images:
+            for result in results:
+                image_list.append({"image": await fetch_image(self.blob_container_client, result)})
+            user_content.extend(image_list)
+
         messages = self.get_messages_from_history(
             system_prompt=system_message,
-            model_id=self.chatgpt_model,
+            model_id=self.gpt4v_model,
             history=history,
-            # Model does not handle lengthy system messages well. Moving sources to latest user conversation to solve follow up questions prompt.
-            user_content=original_user_query + "\n\nSources:\n" + content,
+            user_content=user_content,
             max_tokens=messages_token_limit,
         )
 
-        data_points = {"text": [result.content or "" for result in results]}
+        data_points = {"text": [result.content or "" for result in results], "images": [d["image"] for d in image_list]}
 
         extra_info = {
             "data_points": data_points,
@@ -155,7 +164,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
                     query_text,
                     {
                         "semanticCaptions": use_semantic_captions,
-                        "Model ID": self.chatgpt_deployment,
+                        "Model ID": self.gpt4v_deployment,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
@@ -163,9 +172,9 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             ],
         }
 
+        chatgpt4v_args = {"deployment_id": self.gpt4v_deployment} if self.openai_host == "azure" else {}
         chat_coroutine = openai.ChatCompletion.acreate(
-            **chatgpt_args,
-            model=self.chatgpt_model,
+            **chatgpt4v_args,
             messages=messages,
             temperature=overrides.get("temperature") or 0.7,
             max_tokens=response_token_limit,
@@ -179,19 +188,18 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         system_prompt: str,
         model_id: str,
         history: list[dict[str, str]],
-        user_content: str,
+        user_content: list[Any],
         max_tokens: int,
         few_shots=[],
     ) -> list:
         message_builder = MessageBuilder(system_prompt, model_id)
 
-        # Add examples to show the chat what responses we want. It will try to mimic any responses and make sure they match the rules laid out in the system message.
         for shot in reversed(few_shots):
-            message_builder.insert_message(shot.get("role"), shot.get("content"))
+            message_builder.concat_content(shot.get("role"), shot.get("content"))
 
         append_index = len(few_shots) + 1
 
-        message_builder.insert_message(self.USER, user_content, index=append_index)
+        message_builder.concat_content(self.USER, user_content, index=append_index)
         total_token_count = message_builder.count_tokens_for_message(message_builder.messages[-1])
 
         newest_to_oldest = list(reversed(history[:-1]))
@@ -200,6 +208,6 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             if (total_token_count + potential_message_count) > max_tokens:
                 logging.debug("Reached max tokens of %d, history will be truncated", max_tokens)
                 break
-            message_builder.insert_message(message["role"], message["content"], index=append_index)
+            message_builder.concat_content(message["role"], message["content"], index=append_index)
             total_token_count += potential_message_count
         return message_builder.messages

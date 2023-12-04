@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Checkbox, ChoiceGroup, IChoiceGroupOption, Panel, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption, Dropdown } from "@fluentui/react";
+import { Checkbox, Panel, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption, Dropdown } from "@fluentui/react";
 
 import styles from "./OneShot.module.css";
 
@@ -128,10 +128,6 @@ export function Component(): JSX.Element {
         setQuestion(example);
     };
 
-    const onuseGPT4V = (_ev?: React.FormEvent<HTMLElement | HTMLInputElement>, checked?: boolean) => {
-        setUseGPT4V(!!checked);
-    };
-
     const onShowCitation = (citation: string) => {
         if (activeCitation === citation && activeAnalysisPanelTab === AnalysisPanelTabs.CitationTab) {
             setActiveAnalysisPanelTab(undefined);
@@ -244,7 +240,7 @@ export function Component(): JSX.Element {
                 <GPT4VSettings
                     gpt4vInputs={gpt4vInput}
                     isUseGPT4V={useGPT4V}
-                    updateuseGPT4V={useGPT4V => {
+                    updateUseGPT4V={useGPT4V => {
                         setUseGPT4V(useGPT4V);
                     }}
                     updateGPT4VInputs={inputs => setGPT4VInput(inputs)}

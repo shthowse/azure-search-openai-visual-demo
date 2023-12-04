@@ -1,3 +1,4 @@
+import dataclasses
 import io
 import json
 import logging
@@ -6,7 +7,6 @@ import os
 import time
 from pathlib import Path
 from typing import AsyncGenerator, cast
-import dataclasses
 
 import aiohttp
 import openai
@@ -33,6 +33,7 @@ from quart_cors import cors
 
 from approaches.approach import Approach
 from approaches.chatreadretrieveread import ChatReadRetrieveReadApproach
+from approaches.chatreadretrievereadvision import ChatReadRetrieveReadVisionApproach
 from approaches.retrievethenread import RetrieveThenReadApproach
 from approaches.retrievethenreadvision import RetrieveThenReadVisionApproach
 from core.authentication import AuthenticationHelper
@@ -43,6 +44,7 @@ CONFIG_VISION_KEY = "vision_key"
 CONFIG_VISION_ENDPOINT = "vision_endpoint"
 CONFIG_ASK_APPROACH = "ask_approach"
 CONFIG_ASK_VISION_APPROACH = "ask_vision_approach"
+CONFIG_CHAT_VISION_APPROACH = "chat_vision_approach"
 CONFIG_CHAT_APPROACH = "chat_approach"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
 CONFIG_AUTH_CLIENT = "auth_client"
@@ -134,11 +136,13 @@ async def ask():
         logging.exception("Exception in /ask: %s", error)
         return jsonify(error_dict(error)), 500
 
+
 class JSONEncoder(json.JSONEncoder):
     def default(self, o):
         if dataclasses.is_dataclass(o):
             return dataclasses.asdict(o)
         return super().default(o)
+
 
 async def format_as_ndjson(r: AsyncGenerator[dict, None]) -> AsyncGenerator[str, None]:
     try:
@@ -157,8 +161,15 @@ async def chat():
     context = request_json.get("context", {})
     auth_helper = current_app.config[CONFIG_AUTH_CLIENT]
     context["auth_claims"] = await auth_helper.get_auth_claims_if_enabled(request.headers)
+
     try:
-        approach = current_app.config[CONFIG_CHAT_APPROACH]
+        use_gpt4v = context.get("overrides", {}).get("use_gpt4v", False)
+        approach: Approach
+        if use_gpt4v and CONFIG_ASK_VISION_APPROACH in current_app.config:
+            approach = cast(Approach, current_app.config[CONFIG_CHAT_VISION_APPROACH])
+        else:
+            approach = cast(Approach, current_app.config[CONFIG_CHAT_APPROACH])
+
         result = await approach.run(
             request_json["messages"],
             stream=request_json.get("stream", False),
@@ -231,7 +242,7 @@ async def setup_clients():
     AZURE_SEARCH_QUERY_LANGUAGE = os.getenv("AZURE_SEARCH_QUERY_LANGUAGE", "en-us")
     AZURE_SEARCH_QUERY_SPELLER = os.getenv("AZURE_SEARCH_QUERY_SPELLER", "lexicon")
 
-    # Use the current user identity to authenticate with Azure OpenAI, Cognitive Search and Blob Storage (no secrets needed,
+    # Use the current user identity to authenticate with Azure OpenAI, AI Search and Blob Storage (no secrets needed,
     # just use 'az login' locally, and managed identity when deployed on Azure). If you need to use keys, use separate AzureKeyCredential instances with the
     # keys for each service
     # If you encounter a blocking error during a DefaultAzureCredential resolution, you can exclude the problematic credential by using a parameter (ex. exclude_shared_token_cache_credential=True)
@@ -247,7 +258,7 @@ async def setup_clients():
         token_cache_path=TOKEN_CACHE_PATH,
     )
 
-    # Set up clients for Cognitive Search and Storage
+    # Set up clients for AI Search and Storage
     search_client = SearchClient(
         endpoint=f"https://{AZURE_SEARCH_SERVICE}.search.windows.net",
         index_name=AZURE_SEARCH_INDEX,
@@ -268,11 +279,11 @@ async def setup_clients():
 
     # Used by the OpenAI SDK
     if OPENAI_HOST == "azure":
-        openai.api_type = "azure_ad" if OPENAI_API_KEY is None else "azure"
+        openai.api_type = "azure_ad" if not OPENAI_API_KEY else "azure"
         openai.api_base = f"https://{AZURE_OPENAI_SERVICE}.openai.azure.com"
         openai.api_version = "2023-07-01-preview"
         openai_token = await azure_credential.get_token("https://cognitiveservices.azure.com/.default")
-        openai.api_key = OPENAI_API_KEY if OPENAI_API_KEY is not None else openai_token.token
+        openai.api_key = openai_token.token if not OPENAI_API_KEY else openai_token.token
         # Store on app.config for later use inside requests
         current_app.config[CONFIG_OPENAI_TOKEN] = openai_token
     else:
@@ -308,6 +319,21 @@ async def setup_clients():
             OPENAI_HOST,
             AZURE_OPENAI_GPT4V_DEPLOYMENT,
             AZURE_OPENAI_GPT4V_MODEL,
+            AZURE_OPENAI_EMB_DEPLOYMENT,
+            OPENAI_EMB_MODEL,
+            KB_FIELDS_SOURCEPAGE,
+            KB_FIELDS_CONTENT,
+            AZURE_SEARCH_QUERY_LANGUAGE,
+            AZURE_SEARCH_QUERY_SPELLER,
+        )
+        current_app.config[CONFIG_CHAT_VISION_APPROACH] = ChatReadRetrieveReadVisionApproach(
+            search_client,
+            blob_container_client,
+            OPENAI_HOST,
+            AZURE_OPENAI_GPT4V_DEPLOYMENT,
+            AZURE_OPENAI_GPT4V_MODEL,
+            AZURE_OPENAI_CHATGPT_DEPLOYMENT,
+            OPENAI_CHATGPT_MODEL,
             AZURE_OPENAI_EMB_DEPLOYMENT,
             OPENAI_EMB_MODEL,
             KB_FIELDS_SOURCEPAGE,

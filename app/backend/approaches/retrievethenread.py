@@ -6,9 +6,7 @@ from azure.search.documents.aio import SearchClient
 from azure.storage.blob import ContainerClient
 
 from approaches.approach import Approach, ThoughtStep
-from core.imageshelper import fetch_image
 from core.messagebuilder import MessageBuilder
-from text import nonewlines
 
 # Replace these with your own values, either in environment variables or directly here
 AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -17,7 +15,7 @@ AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER")
 
 class RetrieveThenReadApproach(Approach):
     """
-    Simple retrieve-then-read implementation, using the Cognitive Search and OpenAI APIs directly. It first retrieves
+    Simple retrieve-then-read implementation, using the AI Search and OpenAI APIs directly. It first retrieves
     top documents from search, then constructs a prompt with them, and then uses OpenAI to generate an completion
     (answer) with that prompt.
     """
@@ -85,8 +83,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
         filter = self.build_filter(overrides, auth_claims)
-        use_semantic_ranker=overrides.get("semantic_ranker") and has_text
-
+        use_semantic_ranker = overrides.get("semantic_ranker") and has_text
 
         # If retrieval mode includes vectors, compute an embeddings for the query
         vectors = []
@@ -94,16 +91,9 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             vectors.append(await self.compute_text_embedding(q))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
-        query_text=q if has_text else None
+        query_text = q if has_text else None
 
-        results = await self.search(
-            top,
-            query_text,
-            filter,
-            vectors,
-            use_semantic_ranker,
-            use_semantic_captions
-        )
+        results = await self.search(top, query_text, filter, vectors, use_semantic_ranker, use_semantic_captions)
 
         user_content = [q]
 
@@ -112,7 +102,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         message_builder = MessageBuilder(template, model)
 
         # Process results
-        sources_content = "Sources:\n" + "\n".join((result.content or "" for result in results))
+        sources_content = "Sources:\n" + "\n".join(result.content or "" for result in results)
 
         # Append user message
         user_content = q + "\n" + sources_content

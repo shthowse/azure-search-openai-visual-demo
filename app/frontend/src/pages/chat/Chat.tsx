@@ -5,7 +5,7 @@ import readNDJSONStream from "ndjson-readablestream";
 
 import styles from "./Chat.module.css";
 
-import { chatApi, RetrievalMode, ChatAppResponse, ChatAppResponseOrError, ChatAppRequest, ResponseMessage, VectorFieldOptions } from "../../api";
+import { chatApi, RetrievalMode, ChatAppResponse, ChatAppResponseOrError, ChatAppRequest, ResponseMessage, VectorFieldOptions, GPT4VInput } from "../../api";
 import { Answer, AnswerError, AnswerLoading } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
@@ -17,6 +17,7 @@ import { VectorSettings } from "../../components/VectorSettings";
 import { useLogin, getToken } from "../../authConfig";
 import { useMsal } from "@azure/msal-react";
 import { TokenClaimsDisplay } from "../../components/TokenClaimsDisplay";
+import { GPT4VSettings } from "../../components/GPT4VSettings";
 
 const Chat = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
@@ -31,6 +32,8 @@ const Chat = () => {
     const [vectorFieldList, setVectorFieldList] = useState<VectorFieldOptions[]>([VectorFieldOptions.Embedding]);
     const [useOidSecurityFilter, setUseOidSecurityFilter] = useState<boolean>(false);
     const [useGroupsSecurityFilter, setUseGroupsSecurityFilter] = useState<boolean>(false);
+    const [gpt4vInput, setGPT4VInput] = useState<GPT4VInput>(GPT4VInput.TextAndImages);
+    const [useGPT4V, setUseGPT4V] = useState<boolean>(false);
 
     const lastQuestionRef = useRef<string>("");
     const chatMessageStreamEnd = useRef<HTMLDivElement | null>(null);
@@ -121,7 +124,9 @@ const Chat = () => {
                         suggest_followup_questions: useSuggestFollowupQuestions,
                         use_oid_security_filter: useOidSecurityFilter,
                         use_groups_security_filter: useGroupsSecurityFilter,
-                        vector_fields: vectorFieldList
+                        vector_fields: vectorFieldList,
+                        use_gpt4v: useGPT4V,
+                        gpt4v_input: gpt4vInput
                     }
                 },
                 // ChatAppProtocol: Client must pass on any session state received from the server
@@ -237,7 +242,7 @@ const Chat = () => {
                             <SparkleFilled fontSize={"120px"} primaryFill={"rgba(115, 118, 225, 1)"} aria-hidden="true" aria-label="Chat logo" />
                             <h1 className={styles.chatEmptyStateTitle}>Chat with your data</h1>
                             <h2 className={styles.chatEmptyStateSubtitle}>Ask anything or try an example</h2>
-                            <ExampleList onExampleClicked={onExampleClicked} />
+                            <ExampleList onExampleClicked={onExampleClicked} useGPT4V={useGPT4V} />
                         </div>
                     ) : (
                         <div className={styles.chatMessageStream}>
@@ -367,7 +372,17 @@ const Chat = () => {
                         onChange={onUseSuggestFollowupQuestionsChange}
                     />
 
+                    <GPT4VSettings
+                        gpt4vInputs={gpt4vInput}
+                        isUseGPT4V={useGPT4V}
+                        updateUseGPT4V={useGPT4V => {
+                            setUseGPT4V(useGPT4V);
+                        }}
+                        updateGPT4VInputs={inputs => setGPT4VInput(inputs)}
+                    />
+
                     <VectorSettings
+                        showImageOptions={useGPT4V}
                         updateVectorFields={(options: VectorFieldOptions[]) => setVectorFieldList(options)}
                         updateRetrievalMode={(retrievalMode: RetrievalMode) => setRetrievalMode(retrievalMode)}
                     />

@@ -8,7 +8,6 @@ from azure.storage.blob.aio import ContainerClient
 from approaches.approach import Approach, ThoughtStep
 from core.imageshelper import fetch_image
 from core.messagebuilder import MessageBuilder
-from text import nonewlines
 
 # Replace these with your own values, either in environment variables or directly here
 AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT")
@@ -17,7 +16,7 @@ AZURE_STORAGE_CONTAINER = os.getenv("AZURE_STORAGE_CONTAINER")
 
 class RetrieveThenReadVisionApproach(Approach):
     """
-    Simple retrieve-then-read implementation, using the Cognitive Search and OpenAI APIs directly. It first retrieves
+    Simple retrieve-then-read implementation, using the AI Search and OpenAI APIs directly. It first retrieves
     top documents including images from search, then constructs a prompt with them, and then uses OpenAI to generate an completion
     (answer) with that prompt.
     """
@@ -78,8 +77,7 @@ class RetrieveThenReadVisionApproach(Approach):
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
         filter = self.build_filter(overrides, auth_claims)
-        use_semantic_ranker=overrides.get("semantic_ranker") and has_text
-
+        use_semantic_ranker = overrides.get("semantic_ranker") and has_text
 
         # If retrieval mode includes vectors, compute an embeddings for the query
         vectors = []
@@ -88,23 +86,14 @@ class RetrieveThenReadVisionApproach(Approach):
             vectors.append(await self.compute_image_embedding(q))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
-        query_text=q if has_text else None
+        query_text = q if has_text else None
 
-        results = await self.search(
-            top,
-            query_text,
-            filter,
-            vectors,
-            use_semantic_ranker,
-            use_semantic_captions
-        )
+        results = await self.search(top, query_text, filter, vectors, use_semantic_ranker, use_semantic_captions)
 
         image_list = []
         user_content = [q]
 
-        template = overrides.get("prompt_template") or (
-            self.system_chat_template_gpt4v
-        )
+        template = overrides.get("prompt_template") or (self.system_chat_template_gpt4v)
         model = self.gpt4v_model
         message_builder = MessageBuilder(template, model)
 
@@ -134,10 +123,7 @@ class RetrieveThenReadVisionApproach(Approach):
             n=1,
         )
 
-        data_points = {
-            "text": [result.content or "" for result in results],
-            "images": [d["image"] for d in image_list]
-        }
+        data_points = {"text": [result.content or "" for result in results], "images": [d["image"] for d in image_list]}
 
         extra_info = {
             "data_points": data_points,

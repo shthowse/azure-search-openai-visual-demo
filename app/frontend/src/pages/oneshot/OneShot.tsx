@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Checkbox, Panel, DefaultButton, Spinner, TextField, SpinButton, IDropdownOption, Dropdown } from "@fluentui/react";
 
 import styles from "./OneShot.module.css";
 
-import { askApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFieldOptions, GPT4VInput } from "../../api";
+import { askApi, configApi, ChatAppResponse, ChatAppRequest, RetrievalMode, VectorFieldOptions, GPT4VInput } from "../../api";
 import { Answer, AnswerError } from "../../components/Answer";
 import { QuestionInput } from "../../components/QuestionInput";
 import { ExampleList } from "../../components/Example";
@@ -32,6 +32,7 @@ export function Component(): JSX.Element {
     const [vectorFieldList, setVectorFieldList] = useState<VectorFieldOptions[]>([VectorFieldOptions.Embedding, VectorFieldOptions.ImageEmbedding]);
     const [useOidSecurityFilter, setUseOidSecurityFilter] = useState<boolean>(false);
     const [useGroupsSecurityFilter, setUseGroupsSecurityFilter] = useState<boolean>(false);
+    const [showGPT4VOptions, setShowGPT4VOptions] = useState<boolean>(false);
 
     const lastQuestionRef = useRef<string>("");
 
@@ -43,6 +44,18 @@ export function Component(): JSX.Element {
     const [activeAnalysisPanelTab, setActiveAnalysisPanelTab] = useState<AnalysisPanelTabs | undefined>(undefined);
 
     const client = useLogin ? useMsal().instance : undefined;
+
+    const getConfig = async () => {
+        const token = client ? await getToken(client) : undefined;
+
+        configApi(token?.accessToken).then(config => {
+            setShowGPT4VOptions(config.showGPT4VOptions);
+        });
+    };
+
+    useEffect(() => {
+        getConfig();
+    }, []);
 
     const makeApiRequest = async (question: string) => {
         lastQuestionRef.current = question;
@@ -237,17 +250,20 @@ export function Component(): JSX.Element {
                     onChange={onUseSemanticCaptionsChange}
                     disabled={!useSemanticRanker}
                 />
-                <GPT4VSettings
-                    gpt4vInputs={gpt4vInput}
-                    isUseGPT4V={useGPT4V}
-                    updateUseGPT4V={useGPT4V => {
-                        setUseGPT4V(useGPT4V);
-                    }}
-                    updateGPT4VInputs={inputs => setGPT4VInput(inputs)}
-                />
+
+                {showGPT4VOptions && (
+                    <GPT4VSettings
+                        gpt4vInputs={gpt4vInput}
+                        isUseGPT4V={useGPT4V}
+                        updateUseGPT4V={useGPT4V => {
+                            setUseGPT4V(useGPT4V);
+                        }}
+                        updateGPT4VInputs={inputs => setGPT4VInput(inputs)}
+                    />
+                )}
 
                 <VectorSettings
-                    showImageOptions={useGPT4V}
+                    showImageOptions={useGPT4V && showGPT4VOptions}
                     updateVectorFields={(options: VectorFieldOptions[]) => setVectorFieldList(options)}
                     updateRetrievalMode={(retrievalMode: RetrievalMode) => setRetrievalMode(retrievalMode)}
                 />

@@ -77,3 +77,7 @@ export type ChatAppRequest = {
     stream?: boolean;
     session_state: any;
 };
+
+export type Config = {
+    showGPT4VOptions: boolean;
+};

@@ -48,6 +48,7 @@ CONFIG_CHAT_VISION_APPROACH = "chat_vision_approach"
 CONFIG_CHAT_APPROACH = "chat_approach"
 CONFIG_BLOB_CONTAINER_CLIENT = "blob_container_client"
 CONFIG_AUTH_CLIENT = "auth_client"
+CONFIG_GPT4V_DEPLOYED = "gpt4v_deployed"
 CONFIG_SEARCH_CLIENT = "search_client"
 ERROR_MESSAGE = """The app encountered an error processing your request.
 If you are an administrator of the app, view the full error in the logs. See aka.ms/appservice-logs for more information.
@@ -194,6 +195,11 @@ def auth_setup():
     return jsonify(auth_helper.get_auth_setup_for_client())
 
 
+@bp.route("/config", methods=["GET"])
+def config():
+    return jsonify({"showGPT4VOptions": current_app.config[CONFIG_GPT4V_DEPLOYED]})
+
+
 @bp.before_request
 async def ensure_openai_token():
     if openai.api_type != "azure_ad":
@@ -241,6 +247,8 @@ async def setup_clients():
 
     AZURE_SEARCH_QUERY_LANGUAGE = os.getenv("AZURE_SEARCH_QUERY_LANGUAGE", "en-us")
     AZURE_SEARCH_QUERY_SPELLER = os.getenv("AZURE_SEARCH_QUERY_SPELLER", "lexicon")
+
+    USE_GPT4V = os.getenv("USE_GPT4V", "").lower() == "true"
 
     # Use the current user identity to authenticate with Azure OpenAI, AI Search and Blob Storage (no secrets needed,
     # just use 'az login' locally, and managed identity when deployed on Azure). If you need to use keys, use separate AzureKeyCredential instances with the
@@ -295,6 +303,8 @@ async def setup_clients():
     current_app.config[CONFIG_SEARCH_CLIENT] = search_client
     current_app.config[CONFIG_BLOB_CONTAINER_CLIENT] = blob_container_client
     current_app.config[CONFIG_AUTH_CLIENT] = auth_helper
+
+    current_app.config[CONFIG_GPT4V_DEPLOYED] = bool(USE_GPT4V)
 
     # Various approaches to integrate GPT and external knowledge, most applications will use a single one of these patterns
     # or some derivative, here we include several for exploration purposes

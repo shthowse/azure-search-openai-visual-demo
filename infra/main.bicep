@@ -209,6 +209,8 @@ module backend 'core/host/appservice.bicep' = {
       AZURE_TENANT_ID: tenant().tenantId
       // CORS support, for frontends on other hosts
       ALLOWED_ORIGIN: allowedOrigin
+
+      USE_GPT4V: useGPT4V
     }
   }
 }

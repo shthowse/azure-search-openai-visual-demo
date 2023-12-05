@@ -21,7 +21,9 @@ asgiref==3.7.2
 attrs==23.1.0
     # via aiohttp
 azure-common==1.1.28
-    # via azure-search-documents
+    # via
+    #   azure-keyvault-secrets
+    #   azure-search-documents
 azure-core==1.29.5
     # via
     #   azure-core-tracing-opentelemetry
@@ -35,6 +37,8 @@ azure-core==1.29.5
 azure-core-tracing-opentelemetry==1.0.0b11
     # via azure-monitor-opentelemetry
 azure-identity==1.15.0
+    # via -r requirements.in
+azure-keyvault-secrets==4.7.0
     # via -r requirements.in
 azure-monitor-opentelemetry==1.1.0
     # via -r requirements.in
@@ -63,6 +67,10 @@ click==8.1.7
     #   flask
     #   quart
     #   uvicorn
+colorama==0.4.6
+    # via
+    #   click
+    #   tqdm
 cryptography==41.0.7
     # via
     #   azure-identity
@@ -265,6 +273,8 @@ python-dateutil==2.8.2
     # via pandas
 pytz==2023.3.post1
     # via pandas
+pywin32==306
+    # via portalocker
 quart==0.19.4
     # via
     #   -r requirements.in

@@ -1,9 +1,8 @@
 import logging
-import re
-from typing import Any, AsyncGenerator, Coroutine, Literal, Optional, Union, overload
+from typing import Any, Coroutine, Literal, Optional, Union, overload
 
 from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import QueryType, RawVectorQuery, VectorQuery
+from azure.search.documents.models import VectorQuery
 from openai import AsyncOpenAI, AsyncStream
 from openai.types.chat import (
     ChatCompletion,
@@ -124,6 +123,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             max_tokens=self.chatgpt_token_limit - len(user_query_request),
             few_shots=self.query_prompt_few_shots,
         )
+
         chat_completion: ChatCompletion = await self.openai_client.chat.completions.create(
             messages=messages,  # type: ignore
             # Azure Open AI takes the deployment name as the model name
@@ -142,13 +142,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         # If retrieval mode includes vectors, compute an embedding for the query
         vectors: list[VectorQuery] = []
         if has_vector:
-            embedding = await self.openai_client.embeddings.create(
-                # Azure Open AI takes the deployment name as the model name
-                model=self.embedding_deployment if self.embedding_deployment else self.embedding_model,
-                input=query_text,
-            )
-            query_vector = embedding.data[0].embedding
-            vectors.append(RawVectorQuery(vector=query_vector, k=50, fields="embedding"))
+            vectors.append(await self.compute_text_embedding(query_text))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
         if not has_text:
@@ -187,7 +181,8 @@ class ChatReadRetrieveReadApproach(ChatApproach):
                     query_text,
                     {
                         "semanticCaptions": use_semantic_captions,
-                        "Model ID": self.chatgpt_deployment,
+                        "embedding_model": self.embedding_model,
+                        "chatgpt_model": self.chatgpt_model,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),

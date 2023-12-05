@@ -102,7 +102,7 @@ class SearchManager:
                         sortable=False,
                         facetable=False,
                         vector_search_dimensions=1024,
-                        vector_search_configuration="default",
+                        vector_search_profile="embedding_config",
                     ),
                 )
 

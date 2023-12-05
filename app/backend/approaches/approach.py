@@ -2,9 +2,14 @@ from dataclasses import dataclass
 from typing import Any, AsyncGenerator, List, Optional, Union, cast
 
 import aiohttp
-import openai
 from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import CaptionResult, QueryType, Vector
+from azure.search.documents.models import (
+    CaptionResult,
+    QueryType,
+    RawVectorQuery,
+    VectorQuery,
+)
+from openai import AsyncOpenAI
 from quart import current_app
 
 from core.authentication import AuthenticationHelper
@@ -69,6 +74,7 @@ class Approach:
     def __init__(
         self,
         search_client: SearchClient,
+        openai_client: AsyncOpenAI,
         query_language: Optional[str],
         query_speller: Optional[str],
         embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
@@ -76,6 +82,7 @@ class Approach:
         openai_host: str,
     ):
         self.search_client = search_client
+        self.openai_client = openai_client
         self.query_language = query_language
         self.query_speller = query_speller
         self.embedding_deployment = embedding_deployment
@@ -97,7 +104,7 @@ class Approach:
         top: int,
         query_text: Optional[str],
         filter: Optional[str],
-        vectors: List[Vector],
+        vectors: List[VectorQuery],
         use_semantic_ranker: bool,
         use_semantic_captions: bool,
     ) -> List[Document]:
@@ -112,7 +119,7 @@ class Approach:
                 semantic_configuration_name="default",
                 top=top,
                 query_caption="extractive|highlight-false" if use_semantic_captions else None,
-                vectors=vectors,
+                vector_queries=vectors,
             )
         else:
             results = await self.search_client.search(
@@ -139,9 +146,13 @@ class Approach:
         return documents
 
     async def compute_text_embedding(self, q: str):
-        embedding_args = {"deployment_id": self.embedding_deployment} if self.openai_host == "azure" else {}
-        embedding = await openai.Embedding.acreate(**embedding_args, model=self.embedding_model, input=q)
-        return Vector(value=embedding["data"][0]["embedding"], k=50, fields="embedding")
+        embedding = await self.openai_client.embeddings.create(
+            # Azure Open AI takes the deployment name as the model name
+            model=self.embedding_deployment if self.embedding_deployment else self.embedding_model,
+            input=q,
+        )
+        query_vector = embedding.data[0].embedding
+        return RawVectorQuery(vector=query_vector, k=50, fields="embedding")
 
     async def compute_image_embedding(self, q: str):
         endpoint = f"{current_app.config['vision_endpoint']}computervision/retrieval:vectorizeText"
@@ -154,7 +165,7 @@ class Approach:
                 response.raise_for_status()
                 json = await response.json()
                 image_query_vector = json["vector"]
-        return Vector(value=image_query_vector, k=50, fields="imageEmbedding")
+        return RawVectorQuery(vector=image_query_vector, k=50, fields="imageEmbedding")
 
     async def run(
         self, messages: list[dict], stream: bool = False, session_state: Any = None, context: dict[str, Any] = {}

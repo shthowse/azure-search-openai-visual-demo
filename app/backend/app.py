@@ -308,7 +308,6 @@ async def setup_clients():
     # Various approaches to integrate GPT and external knowledge, most applications will use a single one of these patterns
     # or some derivative, here we include several for exploration purposes
     current_app.config[CONFIG_ASK_APPROACH] = RetrieveThenReadApproach(
-        blob_client=blob_container_client,
         search_client=search_client,
         openai_client=openai_client,
         chatgpt_model=OPENAI_CHATGPT_MODEL,
@@ -323,32 +322,31 @@ async def setup_clients():
 
     if AZURE_OPENAI_GPT4V_MODEL:
         current_app.config[CONFIG_ASK_VISION_APPROACH] = RetrieveThenReadVisionApproach(
-            search_client,
-            blob_container_client,
-            OPENAI_HOST,
-            AZURE_OPENAI_GPT4V_DEPLOYMENT,
-            AZURE_OPENAI_GPT4V_MODEL,
-            AZURE_OPENAI_EMB_DEPLOYMENT,
-            OPENAI_EMB_MODEL,
-            KB_FIELDS_SOURCEPAGE,
-            KB_FIELDS_CONTENT,
-            AZURE_SEARCH_QUERY_LANGUAGE,
-            AZURE_SEARCH_QUERY_SPELLER,
+            search_client=search_client,
+            openai_client=openai_client,
+            blob_container_client=blob_container_client,
+            gpt4v_deployment=AZURE_OPENAI_GPT4V_DEPLOYMENT,
+            gpt4v_model=AZURE_OPENAI_GPT4V_MODEL,
+            embedding_model=OPENAI_EMB_MODEL,
+            embedding_deployment=AZURE_OPENAI_EMB_DEPLOYMENT,
+            sourcepage_field=KB_FIELDS_SOURCEPAGE,
+            content_field=KB_FIELDS_CONTENT,
+            query_language=AZURE_SEARCH_QUERY_LANGUAGE,
+            query_speller=AZURE_SEARCH_QUERY_SPELLER,
         )
+
         current_app.config[CONFIG_CHAT_VISION_APPROACH] = ChatReadRetrieveReadVisionApproach(
-            search_client,
-            blob_container_client,
-            OPENAI_HOST,
-            AZURE_OPENAI_GPT4V_DEPLOYMENT,
-            AZURE_OPENAI_GPT4V_MODEL,
-            AZURE_OPENAI_CHATGPT_DEPLOYMENT,
-            OPENAI_CHATGPT_MODEL,
-            AZURE_OPENAI_EMB_DEPLOYMENT,
-            OPENAI_EMB_MODEL,
-            KB_FIELDS_SOURCEPAGE,
-            KB_FIELDS_CONTENT,
-            AZURE_SEARCH_QUERY_LANGUAGE,
-            AZURE_SEARCH_QUERY_SPELLER,
+            search_client=search_client,
+            openai_client=openai_client,
+            blob_container_client=blob_container_client,
+            gpt4v_deployment=AZURE_OPENAI_GPT4V_DEPLOYMENT,
+            gpt4v_model=AZURE_OPENAI_GPT4V_MODEL,
+            embedding_model=OPENAI_EMB_MODEL,
+            embedding_deployment=AZURE_OPENAI_EMB_DEPLOYMENT,
+            sourcepage_field=KB_FIELDS_SOURCEPAGE,
+            content_field=KB_FIELDS_CONTENT,
+            query_language=AZURE_SEARCH_QUERY_LANGUAGE,
+            query_speller=AZURE_SEARCH_QUERY_SPELLER,
         )
 
     current_app.config[CONFIG_CHAT_APPROACH] = ChatReadRetrieveReadApproach(

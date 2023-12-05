@@ -2,8 +2,7 @@ import os
 from typing import Any, AsyncGenerator, Optional, Union
 
 from azure.search.documents.aio import SearchClient
-from azure.search.documents.models import QueryType, RawVectorQuery, VectorQuery
-from azure.storage.blob import ContainerClient
+from azure.search.documents.models import VectorQuery
 from openai import AsyncOpenAI
 
 from approaches.approach import Approach, ThoughtStep
@@ -46,7 +45,6 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         self,
         *,
         search_client: SearchClient,
-        blob_container_client: ContainerClient,
         openai_client: AsyncOpenAI,
         chatgpt_model: str,
         chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
@@ -58,7 +56,6 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         query_speller: str,
     ):
         self.search_client = search_client
-        self.blob_container_client = blob_container_client
         self.chatgpt_deployment = chatgpt_deployment
         self.openai_client = openai_client
         self.chatgpt_model = chatgpt_model
@@ -82,6 +79,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         auth_claims = context.get("auth_claims", {})
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
+        use_semantic_ranker = overrides.get("semantic_ranker") and has_text
 
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
@@ -89,13 +87,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         # If retrieval mode includes vectors, compute an embedding for the query
         vectors: list[VectorQuery] = []
         if has_vector:
-            embedding = await self.openai_client.embeddings.create(
-                # Azure Open AI takes the deployment name as the model name
-                model=self.embedding_deployment if self.embedding_deployment else self.embedding_model,
-                input=q,
-            )
-            query_vector = embedding.data[0].embedding
-            vectors.append(RawVectorQuery(vector=query_vector, k=50, fields="embedding"))
+            vectors.append(await self.compute_text_embedding(q))
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
         query_text = q if has_text else None
@@ -138,7 +130,8 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                     query_text,
                     {
                         "semanticCaptions": use_semantic_captions,
-                        "Model ID": deployment_id,
+                        "embedding_model": self.embedding_model,
+                        "chatgpt_model": self.chatgpt_model,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),

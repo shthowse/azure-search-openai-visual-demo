@@ -37,6 +37,7 @@ This repository now includes an example of integrating GPT-4 Vision with Azure A
 
 
 5. **Web Application Usage:**
+    ![GPT4V configuration screenshot](./gpt4v.png)
    - Access the developer options in the web app and select "USE GPT-4V".
    - Sample questions will be updated for testing.
    - Interact with the questions to view responses.

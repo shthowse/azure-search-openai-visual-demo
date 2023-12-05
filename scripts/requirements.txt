@@ -134,8 +134,6 @@ python-dateutil==2.8.2
     # via pandas
 pytz==2023.3.post1
     # via pandas
-pywin32==306
-    # via portalocker
 regex==2023.10.3
     # via tiktoken
 requests==2.31.0

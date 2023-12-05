@@ -15,6 +15,8 @@ from azure.search.documents.indexes.models import (
     SemanticSettings,
     SimpleField,
     VectorSearch,
+    VectorSearchAlgorithmKind,
+    VectorSearchProfile,
 )
 
 from .blobmanager import BlobManager
@@ -72,7 +74,7 @@ class SearchManager:
                     sortable=False,
                     facetable=False,
                     vector_search_dimensions=1536,
-                    vector_search_configuration="default",
+                    vector_search_profile="embedding_config",
                 ),
                 SimpleField(name="category", type="Edm.String", filterable=True, facetable=True),
                 SimpleField(name="sourcepage", type="Edm.String", filterable=True, facetable=True),
@@ -118,11 +120,19 @@ class SearchManager:
                     ]
                 ),
                 vector_search=VectorSearch(
-                    algorithm_configurations=[
+                    algorithms=[
                         HnswVectorSearchAlgorithmConfiguration(
-                            name="default", kind="hnsw", hnsw_parameters=HnswParameters(metric="cosine")
+                            name="hnsw_config",
+                            kind=VectorSearchAlgorithmKind.HNSW,
+                            parameters=HnswParameters(metric="cosine"),
                         )
-                    ]
+                    ],
+                    profiles=[
+                        VectorSearchProfile(
+                            name="embedding_config",
+                            algorithm="hnsw_config",
+                        ),
+                    ],
                 ),
             )
             if self.search_info.index_name not in [name async for name in search_index_client.list_index_names()]:
@@ -138,10 +148,10 @@ class SearchManager:
         section_batches = [sections[i : i + MAX_BATCH_SIZE] for i in range(0, len(sections), MAX_BATCH_SIZE)]
 
         async with self.search_info.create_search_client() as search_client:
-            for batch in section_batches:
+            for batch_index, batch in enumerate(section_batches):
                 documents = [
                     {
-                        "id": f"{section.content.filename_to_id()}-page-{i}",
+                        "id": f"{section.content.filename_to_id()}-page-{section_index + batch_index * MAX_BATCH_SIZE}",
                         "content": section.split_page.text,
                         "category": section.category,
                         "sourcepage": BlobManager.blob_image_name_from_file_page(
@@ -154,7 +164,7 @@ class SearchManager:
                         "sourcefile": section.content.filename(),
                         **section.content.acls,
                     }
-                    for i, section in enumerate(batch)
+                    for section_index, section in enumerate(batch)
                 ]
                 if self.embeddings:
                     embeddings = await self.embeddings.create_embeddings(

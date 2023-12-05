@@ -1,6 +1,13 @@
 import unicodedata
 from typing import Any
 
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
+
 from .modelhelper import num_tokens_from_messages
 
 
@@ -17,7 +24,9 @@ class MessageBuilder:
     """
 
     def __init__(self, system_content: str, chatgpt_model: str):
-        self.messages = [{"role": "system", "content": self.normalize_content(system_content)}]
+        self.messages: list[ChatCompletionMessageParam] = [
+            ChatCompletionSystemMessageParam(role="system", content=self.normalize_content(system_content))
+        ]
         self.model = chatgpt_model
 
     def insert_message(self, role: str, content: str, index: int = 1):
@@ -25,11 +34,20 @@ class MessageBuilder:
         Inserts a message into the conversation at the specified index,
         or at index 1 (after system message) if no index is specified.
         Args:
-            role (str): The role of the message sender (either "user" or "system").
+            role (str): The role of the message sender (either "user", "system", or "assistant").
             content (str): The content of the message.
             index (int): The index at which to insert the message.
         """
-        self.messages.insert(index, {"role": role, "content": self.normalize_content(content)})
+        message: ChatCompletionMessageParam
+        if role == "user":
+            message = ChatCompletionUserMessageParam(role="user", content=self.normalize_content(content))
+        elif role == "system":
+            message = ChatCompletionSystemMessageParam(role="system", content=self.normalize_content(content))
+        elif role == "assistant":
+            message = ChatCompletionAssistantMessageParam(role="assistant", content=self.normalize_content(content))
+        else:
+            raise ValueError(f"Invalid role: {role}")
+        self.messages.insert(index, message)
 
     def concat_content(self, role: str, content: list[Any], index: int = 1):
         """

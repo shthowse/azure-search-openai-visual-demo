@@ -233,6 +233,10 @@ either you or they can follow these steps:
 
 ## Enabling optional features
 
+### Enabling GPT-4 Turbo with Vision
+
+This section covers the integration of GPT-4 Vision with Azure AI Search. Learn how to enhance your search capabilities with the power of image and text indexing, enabling advanced search functionalities over diverse document types. For a detailed guide on setup and usage, visit our [Enabling GPT-4 Turbo with Vision](docs/gpt4v.md) page.
+
 ### Enabling Application Insights
 
 To enable Application Insights and the tracing of each request, along with the logging of errors, set the `AZURE_USE_APPLICATION_INSIGHTS` variable to true before running `azd up`

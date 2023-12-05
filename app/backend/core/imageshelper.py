@@ -1,8 +1,10 @@
 import base64
 import os
-from approaches.approach import Document
 from typing import Optional
+
 from azure.storage.blob.aio import ContainerClient
+
+from approaches.approach import Document
 
 
 async def download_blob_as_base64(blob_container_client: ContainerClient, file_path: str) -> Optional[str]:

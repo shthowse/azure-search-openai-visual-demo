@@ -124,7 +124,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
 
         results = await self.search(top, query_text, filter, vectors, use_semantic_ranker, use_semantic_captions)
 
-        content = "\n".join((result.content or "" for result in results))
+        content = "\n".join(result.content or "" for result in results)
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
 

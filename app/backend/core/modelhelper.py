@@ -9,16 +9,14 @@ MODELS_2_TOKEN_LIMITS = {
     "gpt-3.5-turbo-16k": 16000,
     "gpt-4": 8100,
     "gpt-4-32k": 32000,
+    "gpt-4v": 128000,
 }
 
-EXPERIMENTAL_MODELS = ["gptv", "gpt4v", "gpt-4v"]
 
-AOAI_2_OAI = {"gpt-35-turbo": "gpt-3.5-turbo", "gpt-35-turbo-16k": "gpt-3.5-turbo-16k"}
+AOAI_2_OAI = {"gpt-35-turbo": "gpt-3.5-turbo", "gpt-35-turbo-16k": "gpt-3.5-turbo-16k", "gpt-4v": "gpt-4-turbo-vision"}
 
 
 def get_token_limit(model_id: str) -> int:
-    if not model_id or model_id in EXPERIMENTAL_MODELS:
-        return 32000  # TODO: Fix this.
     if model_id not in MODELS_2_TOKEN_LIMITS:
         raise ValueError(f"Expected model gpt-35-turbo and above. Received: {model_id}")
     return MODELS_2_TOKEN_LIMITS[model_id]
@@ -38,15 +36,14 @@ def num_tokens_from_messages(message: dict[str, str], model: str) -> int:
         num_tokens_from_messages(message, model)
         output: 11
     """
-    if model in EXPERIMENTAL_MODELS:
-        return 0
 
     encoding = tiktoken.encoding_for_model(get_oai_chatmodel_tiktok(model))
     num_tokens = 2  # For "role" and "content" keys
     for key, value in message.items():
         if isinstance(value, list):
             for v in value:
-                if isinstance(v, str):  # Its yet to be known how GPT4V tokens are calculated for images.
+                # TODO: Update token count for images https://github.com/openai/openai-cookbook/pull/881/files
+                if isinstance(v, str):
                     num_tokens += len(encoding.encode(v))
         else:
             num_tokens += len(encoding.encode(value))

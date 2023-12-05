@@ -1,9 +1,13 @@
 import logging
-from typing import Any, Optional
+from typing import Any, Coroutine, Optional, Union
 
-import openai
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import ContainerClient
+from openai import AsyncOpenAI, AsyncStream
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionChunk,
+)
 
 from approaches.approach import ThoughtStep
 from approaches.chatapproach import ChatApproach
@@ -24,11 +28,9 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         self,
         search_client: SearchClient,
         blob_container_client: ContainerClient,
-        openai_host: str,
+        openai_client: AsyncOpenAI,
         gpt4v_deployment: Optional[str],  # Not needed for non-Azure OpenAI
         gpt4v_model: str,
-        chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
-        chatgpt_model: str,
         embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
         embedding_model: str,
         sourcepage_field: str,
@@ -38,11 +40,9 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
     ):
         self.search_client = search_client
         self.blob_container_client = blob_container_client
-        self.openai_host = openai_host
+        self.openai_client = openai_client
         self.gpt4v_deployment = gpt4v_deployment
         self.gpt4v_model = gpt4v_model
-        self.chatgpt_deployment = chatgpt_deployment
-        self.chatgpt_model = chatgpt_model
         self.embedding_deployment = embedding_deployment
         self.embedding_model = embedding_model
         self.sourcepage_field = sourcepage_field
@@ -74,7 +74,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         overrides: dict[str, Any],
         auth_claims: dict[str, Any],
         should_stream: bool = False,
-    ) -> tuple:
+    ) -> tuple[dict[str, Any], Coroutine[Any, Any, Union[ChatCompletion, AsyncStream[ChatCompletionChunk]]]]:
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
@@ -89,22 +89,21 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
 
         # STEP 1: Generate an optimized keyword search query based on the chat history and the last question
         user_query_request = ["Generate search query for: " + original_user_query]
+
         messages = self.get_messages_from_history(
             system_prompt=self.query_prompt_template,
-            model_id=self.chatgpt_model,
+            model_id=self.gpt4v_model,
             history=history,
             user_content=user_query_request,
             max_tokens=self.chatgpt_token_limit - len(" ".join(user_query_request)),
             few_shots=self.query_prompt_few_shots,
         )
 
-        chatgpt_args = {"deployment_id": self.gpt4v_deployment} if self.openai_host == "azure" else {}
-
-        chat_completion = await openai.ChatCompletion.acreate(
-            **chatgpt_args,
+        chat_completion: ChatCompletion = await self.openai_client.chat.completions.create(
+            model=self.gpt4v_deployment if self.gpt4v_deployment else self.gpt4v_model,
             messages=messages,
-            temperature=0.0,
-            max_tokens=100,  # Setting too low risks malformed JSON, setting too high may affect performance
+            temperature=overrides.get("temperature") or 0.0,
+            max_tokens=100,
             n=1,
         )
 
@@ -164,7 +163,8 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
                     query_text,
                     {
                         "semanticCaptions": use_semantic_captions,
-                        "Model ID": self.gpt4v_deployment,
+                        "gpt4v_deployment": self.gpt4v_deployment,
+                        "embedding_model": self.embedding_model,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
@@ -172,9 +172,8 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
             ],
         }
 
-        chatgpt4v_args = {"deployment_id": self.gpt4v_deployment} if self.openai_host == "azure" else {}
-        chat_coroutine = openai.ChatCompletion.acreate(
-            **chatgpt4v_args,
+        chat_coroutine = self.openai_client.chat.completions.create(
+            model=self.gpt4v_deployment if self.gpt4v_deployment else self.gpt4v_model,
             messages=messages,
             temperature=overrides.get("temperature") or 0.7,
             max_tokens=response_token_limit,

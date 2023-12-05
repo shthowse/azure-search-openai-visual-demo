@@ -45,7 +45,7 @@ param keyVaultServiceName string = ''
 param computerVisionSecretName string = 'computerVisionSecret'
 
 @description('Location for the OpenAI resource group')
-@allowed([ 'canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus', 'australiaeast' ])
+@allowed(['canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus', 'australiaeast', 'swedencentral'])
 @metadata({
   azd: {
     type: 'location'
@@ -134,17 +134,28 @@ resource keyVaultResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' e
 }
 
 // Monitor application with Azure Monitor
-module monitoring './core/monitor/monitoring.bicep' = if (useApplicationInsights) {
+module monitoring 'core/monitor/monitoring.bicep' = if (useApplicationInsights) {
   name: 'monitoring'
   scope: resourceGroup
   params: {
     location: location
     tags: tags
     applicationInsightsName: !empty(applicationInsightsName) ? applicationInsightsName : '${abbrs.insightsComponents}${resourceToken}'
-    applicationInsightsDashboardName: !empty(applicationInsightsDashboardName) ? applicationInsightsDashboardName : '${abbrs.portalDashboards}${resourceToken}'
     logAnalyticsName: !empty(logAnalyticsName) ? logAnalyticsName : '${abbrs.operationalInsightsWorkspaces}${resourceToken}'
   }
 }
+
+
+module applicationInsightsDashboard 'backend-dashboard.bicep' = if (useApplicationInsights) {
+  name: 'application-insights-dashboard'
+  scope: resourceGroup
+  params: {
+    name: !empty(applicationInsightsDashboardName) ? applicationInsightsDashboardName : '${abbrs.portalDashboards}${resourceToken}'
+    location: location
+    applicationInsightsName: monitoring.outputs.applicationInsightsName
+  }
+}
+
 
 // Create an App Service Plan to group applications under the same payment plan and SKU
 module appServicePlan 'core/host/appserviceplan.bicep' = {
@@ -235,7 +246,10 @@ var defaultOpenAiDeployments = [
       name: embeddingModelName
       version: '2'
     }
-    capacity: embeddingDeploymentCapacity
+    sku: {
+      name: 'Standard'
+      capacity: embeddingDeploymentCapacity
+    }
   }
 ]
 

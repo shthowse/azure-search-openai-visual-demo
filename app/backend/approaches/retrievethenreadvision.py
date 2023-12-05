@@ -1,9 +1,9 @@
 import os
 from typing import Any, AsyncGenerator, Optional, Union
 
-import openai
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import ContainerClient
+from openai import AsyncOpenAI
 
 from approaches.approach import Approach, ThoughtStep
 from core.imageshelper import fetch_image
@@ -36,7 +36,7 @@ class RetrieveThenReadVisionApproach(Approach):
         self,
         search_client: SearchClient,
         blob_container_client: ContainerClient,
-        openai_host: str,
+        openai_client: AsyncOpenAI,
         gpt4v_deployment: Optional[str],
         gpt4v_model: str,
         embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
@@ -48,7 +48,7 @@ class RetrieveThenReadVisionApproach(Approach):
     ):
         self.search_client = search_client
         self.blob_container_client = blob_container_client
-        self.openai_host = openai_host
+        self.openai_client = openai_client
         self.embedding_model = embedding_model
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
@@ -108,20 +108,16 @@ class RetrieveThenReadVisionApproach(Approach):
 
         # Append user message
         message_builder.concat_content("user", user_content)
-        messages = message_builder.messages
 
-        # Chat completion
-        deployment_id = self.gpt4v_deployment
-        temperature = overrides.get("temperature") or 0.7
-        chatgpt_args = {"deployment_id": deployment_id} if self.openai_host == "azure" else {}
-
-        chat_completion = await openai.ChatCompletion.acreate(
-            **chatgpt_args,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=1024,
-            n=1,
-        )
+        chat_completion = (
+            await self.openai_client.chat.completions.create(
+                model=self.gpt4v_deployment if self.gpt4v_deployment else self.gpt4v_model,
+                messages=message_builder.messages,
+                temperature=overrides.get("temperature") or 0.3,
+                max_tokens=1024,
+                n=1,
+            )
+        ).model_dump()
 
         data_points = {"text": [result.content or "" for result in results], "images": [d["image"] for d in image_list]}
 
@@ -133,13 +129,14 @@ class RetrieveThenReadVisionApproach(Approach):
                     query_text,
                     {
                         "semanticCaptions": use_semantic_captions,
-                        "Model ID": deployment_id,
+                        "gpt4v_deployment": self.gpt4v_deployment,
+                        "embedding_model": self.embedding_model,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
                 ThoughtStep("Prompt", [str(message) for message in messages]),
             ],
         }
-        chat_completion.choices[0]["context"] = extra_info
-        chat_completion.choices[0]["session_state"] = session_state
+        chat_completion["choices"][0]["context"] = extra_info
+        chat_completion["choices"][0]["session_state"] = session_state
         return chat_completion

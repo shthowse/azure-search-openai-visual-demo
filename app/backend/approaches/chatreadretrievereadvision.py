@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Coroutine, Literal, Optional, Union, overload
+from typing import Any, Coroutine, Optional, Union
 
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import ContainerClient
@@ -7,7 +7,6 @@ from openai import AsyncOpenAI, AsyncStream
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionChunk,
-    ChatCompletionMessageParam,
 )
 
 from approaches.approach import ThoughtStep

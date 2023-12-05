@@ -34,6 +34,7 @@ class RetrieveThenReadVisionApproach(Approach):
 
     def __init__(
         self,
+        *,
         search_client: SearchClient,
         blob_container_client: ContainerClient,
         openai_client: AsyncOpenAI,
@@ -45,6 +46,8 @@ class RetrieveThenReadVisionApproach(Approach):
         content_field: str,
         query_language: str,
         query_speller: str,
+        vision_endpoint: str,
+        vision_key: str,
     ):
         self.search_client = search_client
         self.blob_container_client = blob_container_client
@@ -57,6 +60,8 @@ class RetrieveThenReadVisionApproach(Approach):
         self.gpt4v_model = gpt4v_model
         self.query_language = query_language
         self.query_speller = query_speller
+        self.vision_endpoint = vision_endpoint
+        self.vision_key = vision_key
 
     async def run(
         self,
@@ -70,6 +75,7 @@ class RetrieveThenReadVisionApproach(Approach):
         auth_claims = context.get("auth_claims", {})
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
+        vector_fields = overrides.get("vector_fields", ["embedding"])
 
         include_gtpV_text = overrides.get("gpt4v_input") in ["textAndImages", "texts", None]
         include_gtpV_images = overrides.get("gpt4v_input") in ["textAndImages", "images", None]
@@ -80,10 +86,16 @@ class RetrieveThenReadVisionApproach(Approach):
         use_semantic_ranker = overrides.get("semantic_ranker") and has_text
 
         # If retrieval mode includes vectors, compute an embeddings for the query
+
         vectors = []
         if has_vector:
-            vectors.append(await self.compute_text_embedding(q))
-            vectors.append(await self.compute_image_embedding(q))
+            for field in vector_fields:
+                vector = (
+                    await self.compute_text_embedding(q)
+                    if field == "embedding"
+                    else await self.compute_image_embedding(q, self.vision_endpoint, self.vision_key)
+                )
+                vectors.append(vector)
 
         # Only keep the text query if the retrieval mode uses text, otherwise drop it
         query_text = q if has_text else None
@@ -127,14 +139,10 @@ class RetrieveThenReadVisionApproach(Approach):
                 ThoughtStep(
                     "Search Query",
                     query_text,
-                    {
-                        "semanticCaptions": use_semantic_captions,
-                        "gpt4v_deployment": self.gpt4v_deployment,
-                        "embedding_model": self.embedding_model,
-                    },
+                    {"semanticCaptions": use_semantic_captions, "vector_fields": vector_fields},
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
-                ThoughtStep("Prompt", [str(message) for message in messages]),
+                ThoughtStep("Prompt", [str(message) for message in message_builder.messages]),
             ],
         }
         chat_completion["choices"][0]["context"] = extra_info

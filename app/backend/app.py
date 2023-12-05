@@ -40,7 +40,6 @@ from core.authentication import AuthenticationHelper
 CONFIG_OPENAI_TOKEN = "openai_token"
 CONFIG_CREDENTIAL = "azure_credential"
 CONFIG_VISION_KEY = "vision_key"
-CONFIG_VISION_ENDPOINT = "vision_endpoint"
 CONFIG_ASK_APPROACH = "ask_approach"
 CONFIG_ASK_VISION_APPROACH = "ask_vision_approach"
 CONFIG_CHAT_VISION_APPROACH = "chat_vision_approach"
@@ -228,6 +227,7 @@ async def setup_clients():
     AZURE_OPENAI_GPT4V_MODEL = os.environ.get("AZURE_OPENAI_GPT4V_MODEL")
     AZURE_OPENAI_CHATGPT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHATGPT_DEPLOYMENT") if OPENAI_HOST == "azure" else None
     AZURE_OPENAI_EMB_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMB_DEPLOYMENT") if OPENAI_HOST == "azure" else None
+    AZURE_VISION_ENDPOINT = os.getenv("AZURE_VISION_ENDPOINT", "")
     # Used only with non-Azure OpenAI deployments
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     OPENAI_ORGANIZATION = os.getenv("OPENAI_ORGANIZATION")
@@ -279,7 +279,6 @@ async def setup_clients():
         )
         vision_secret = await key_vault_client.get_secret(VISION_SECRET_NAME)
         current_app.config[CONFIG_VISION_KEY] = vision_secret.value
-        current_app.config[CONFIG_VISION_ENDPOINT] = os.getenv("AZURE_VISION_ENDPOINT")
 
     # Used by the OpenAI SDK
     openai_client: AsyncOpenAI
@@ -325,6 +324,8 @@ async def setup_clients():
             search_client=search_client,
             openai_client=openai_client,
             blob_container_client=blob_container_client,
+            vision_endpoint=AZURE_VISION_ENDPOINT,
+            vision_key=current_app.config[CONFIG_VISION_KEY],
             gpt4v_deployment=AZURE_OPENAI_GPT4V_DEPLOYMENT,
             gpt4v_model=AZURE_OPENAI_GPT4V_MODEL,
             embedding_model=OPENAI_EMB_MODEL,
@@ -339,6 +340,8 @@ async def setup_clients():
             search_client=search_client,
             openai_client=openai_client,
             blob_container_client=blob_container_client,
+            vision_endpoint=AZURE_VISION_ENDPOINT,
+            vision_key=current_app.config[CONFIG_VISION_KEY],
             gpt4v_deployment=AZURE_OPENAI_GPT4V_DEPLOYMENT,
             gpt4v_model=AZURE_OPENAI_GPT4V_MODEL,
             embedding_model=OPENAI_EMB_MODEL,

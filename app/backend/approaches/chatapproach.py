@@ -160,6 +160,7 @@ class ChatApproach(Approach, ABC):
     ) -> Union[dict[str, Any], AsyncGenerator[dict[str, Any], None]]:
         overrides = context.get("overrides", {})
         auth_claims = context.get("auth_claims", {})
+
         if stream is False:
             return await self.run_without_streaming(messages, overrides, auth_claims, session_state)
         else:

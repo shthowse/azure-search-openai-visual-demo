@@ -177,13 +177,13 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             "data_points": data_points,
             "thoughts": [
                 ThoughtStep(
-                    "Search Query",
+                    "Original user query",
+                    original_user_query,
+                ),
+                ThoughtStep(
+                    "Generated search query",
                     query_text,
-                    {
-                        "semanticCaptions": use_semantic_captions,
-                        "embedding_model": self.embedding_model,
-                        "chatgpt_model": self.chatgpt_model,
-                    },
+                    {"semanticCaptions": use_semantic_captions, "has_vector": has_vector},
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
                 ThoughtStep("Prompt", [str(message) for message in messages]),

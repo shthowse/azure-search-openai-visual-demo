@@ -130,12 +130,10 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                     query_text,
                     {
                         "semanticCaptions": use_semantic_captions,
-                        "embedding_model": self.embedding_model,
-                        "chatgpt_model": self.chatgpt_model,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
-                ThoughtStep("Prompt", [str(message) for message in messages]),
+                ThoughtStep("Prompt", [str(message) for message in message_builder.messages]),
             ],
         }
         chat_completion["choices"][0]["context"] = extra_info

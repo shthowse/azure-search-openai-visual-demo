@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Coroutine, Literal, Optional, Union, overload
 
 from azure.search.documents.aio import SearchClient
@@ -7,12 +6,10 @@ from openai import AsyncOpenAI, AsyncStream
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionChunk,
-    ChatCompletionMessageParam,
 )
 
 from approaches.approach import ThoughtStep
 from approaches.chatapproach import ChatApproach
-from core.messagebuilder import MessageBuilder
 from core.modelhelper import get_token_limit
 
 
@@ -200,33 +197,3 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             stream=should_stream,
         )
         return (extra_info, chat_coroutine)
-
-    def get_messages_from_history(
-        self,
-        system_prompt: str,
-        model_id: str,
-        history: list[dict[str, str]],
-        user_content: str,
-        max_tokens: int,
-        few_shots=[],
-    ) -> list[ChatCompletionMessageParam]:
-        message_builder = MessageBuilder(system_prompt, model_id)
-
-        # Add examples to show the chat what responses we want. It will try to mimic any responses and make sure they match the rules laid out in the system message.
-        for shot in reversed(few_shots):
-            message_builder.insert_message(shot.get("role"), shot.get("content"))
-
-        append_index = len(few_shots) + 1
-
-        message_builder.insert_message(self.USER, user_content, index=append_index)
-        total_token_count = message_builder.count_tokens_for_message(dict(message_builder.messages[-1]))  # type: ignore
-
-        newest_to_oldest = list(reversed(history[:-1]))
-        for message in newest_to_oldest:
-            potential_message_count = message_builder.count_tokens_for_message(message)
-            if (total_token_count + potential_message_count) > max_tokens:
-                logging.debug("Reached max tokens of %d, history will be truncated", max_tokens)
-                break
-            message_builder.insert_message(message["role"], message["content"], index=append_index)
-            total_token_count += potential_message_count
-        return message_builder.messages

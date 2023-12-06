@@ -4,6 +4,10 @@ from typing import Any, AsyncGenerator, Optional, Union
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import ContainerClient
 from openai import AsyncOpenAI
+from openai.types.chat import (
+    ChatCompletionContentPartImageParam,
+    ChatCompletionContentPartParam,
+)
 
 from approaches.approach import Approach, ThoughtStep
 from core.imageshelper import fetch_image
@@ -102,8 +106,8 @@ class RetrieveThenReadVisionApproach(Approach):
 
         results = await self.search(top, query_text, filter, vectors, use_semantic_ranker, use_semantic_captions)
 
-        image_list = []
-        user_content = [q]
+        image_list: list[ChatCompletionContentPartImageParam] = []
+        user_content: list[ChatCompletionContentPartParam] = [{"text": q, "type": "text"}]
 
         template = overrides.get("prompt_template") or (self.system_chat_template_gpt4v)
         model = self.gpt4v_model
@@ -112,14 +116,16 @@ class RetrieveThenReadVisionApproach(Approach):
         # Process results
         sources_content = "Sources:\n" + "\n".join([result.content or "" for result in results])
         if include_gtpV_text:
-            user_content.append(sources_content)
+            user_content.append({"text": sources_content, "type": "text"})
         if include_gtpV_images:
             for result in results:
-                image_list.append({"image": await fetch_image(self.blob_container_client, result)})
+                url = await fetch_image(self.blob_container_client, result)
+                if url:
+                    image_list.append({"image_url": url, "type": "image_url"})
             user_content.extend(image_list)
 
         # Append user message
-        message_builder.concat_content("user", user_content)
+        message_builder.insert_message("user", user_content)
 
         chat_completion = (
             await self.openai_client.chat.completions.create(
@@ -131,7 +137,10 @@ class RetrieveThenReadVisionApproach(Approach):
             )
         ).model_dump()
 
-        data_points = {"text": [result.content or "" for result in results], "images": [d["image"] for d in image_list]}
+        data_points = {
+            "text": [result.content or "" for result in results],
+            "images": [d["image_url"] for d in image_list],
+        }
 
         extra_info = {
             "data_points": data_points,

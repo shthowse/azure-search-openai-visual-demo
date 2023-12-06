@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Coroutine, Optional, Union
 
 from azure.search.documents.aio import SearchClient
@@ -7,12 +6,13 @@ from openai import AsyncOpenAI, AsyncStream
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionChunk,
+    ChatCompletionContentPartImageParam,
+    ChatCompletionContentPartParam,
 )
 
 from approaches.approach import ThoughtStep
 from approaches.chatapproach import ChatApproach
 from core.imageshelper import fetch_image
-from core.messagebuilder import MessageBuilder
 from core.modelhelper import get_token_limit
 
 
@@ -68,7 +68,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         Be brief in your answers.
         For tabular information return it as an html table. Do not return markdown format.
         The text and image source can be the same file name, don't use the image title when citing the image source, only use the file name as mentioned
-        If you cannot answer using the sources below, say you don't know. Return just the answer without any input texts. 
+        If you cannot answer using the sources below, say you don't know. Return just the answer without any input texts.
         {follow_up_questions_prompt}
         {injected_prompt}
         """
@@ -94,7 +94,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         original_user_query = history[-1]["content"]
 
         # STEP 1: Generate an optimized keyword search query based on the chat history and the last question
-        user_query_request = ["Generate search query for: " + original_user_query]
+        user_query_request = "Generate search query for: " + original_user_query
 
         messages = self.get_messages_from_history(
             system_prompt=self.query_prompt_template,
@@ -147,14 +147,17 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
         response_token_limit = 1024
         messages_token_limit = self.chatgpt_token_limit - response_token_limit
 
-        user_content = [original_user_query]
-        image_list = []
+        user_content: list[ChatCompletionContentPartParam] = [{"text": original_user_query, "type": "text"}]
+        image_list: list[ChatCompletionContentPartImageParam] = []
 
         if include_gtpV_text:
-            user_content.append("\n\nSources:\n" + content)
+            user_content.append({"text": "\n\nSources:\n" + content, "type": "text"})
         if include_gtpV_images:
             for result in results:
-                image_list.append({"image": await fetch_image(self.blob_container_client, result)})
+                if result.sourcepage:
+                    url = await fetch_image(self.blob_container_client, result)
+                    if url:
+                        image_list.append({"image_url": url, "type": "image_url"})
             user_content.extend(image_list)
 
         messages = self.get_messages_from_history(
@@ -165,7 +168,10 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
             max_tokens=messages_token_limit,
         )
 
-        data_points = {"text": [result.content or "" for result in results], "images": [d["image"] for d in image_list]}
+        data_points = {
+            "text": [result.content or "" for result in results],
+            "images": [d["image_url"] for d in image_list],
+        }
 
         extra_info = {
             "data_points": data_points,
@@ -193,32 +199,3 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
             stream=should_stream,
         )
         return (extra_info, chat_coroutine)
-
-    def get_messages_from_history(
-        self,
-        system_prompt: str,
-        model_id: str,
-        history: list[dict[str, str]],
-        user_content: list[Any],
-        max_tokens: int,
-        few_shots=[],
-    ) -> list:
-        message_builder = MessageBuilder(system_prompt, model_id)
-
-        for shot in reversed(few_shots):
-            message_builder.concat_content(shot.get("role"), shot.get("content"))
-
-        append_index = len(few_shots) + 1
-
-        message_builder.concat_content(self.USER, user_content, index=append_index)
-        total_token_count = message_builder.count_tokens_for_message(message_builder.messages[-1])
-
-        newest_to_oldest = list(reversed(history[:-1]))
-        for message in newest_to_oldest:
-            potential_message_count = message_builder.count_tokens_for_message(message)
-            if (total_token_count + potential_message_count) > max_tokens:
-                logging.debug("Reached max tokens of %d, history will be truncated", max_tokens)
-                break
-            message_builder.concat_content(message["role"], message["content"], index=append_index)
-            total_token_count += potential_message_count
-        return message_builder.messages

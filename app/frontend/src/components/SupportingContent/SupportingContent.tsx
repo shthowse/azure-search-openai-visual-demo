@@ -21,7 +21,7 @@ export const SupportingContent = ({ supportingContent }: Props) => {
                 return <TextSupportingContent {...parsed} />;
             })}
             {imageItems?.map(i => {
-                return <img className={styles.supportingContentItemImage} src={`data:image/png;base64,${i}`} />;
+                return <img className={styles.supportingContentItemImage} src={i} />;
             })}
         </ul>
     );

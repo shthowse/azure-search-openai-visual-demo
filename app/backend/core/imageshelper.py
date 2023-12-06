@@ -3,8 +3,17 @@ import os
 from typing import Optional
 
 from azure.storage.blob.aio import ContainerClient
+from typing_extensions import Literal, Required, TypedDict
 
 from approaches.approach import Document
+
+
+class ImageURL(TypedDict, total=False):
+    url: Required[str]
+    """Either a URL of the image or the base64 encoded image data."""
+
+    detail: Literal["auto", "low", "high"]
+    """Specifies the detail level of the image."""
 
 
 async def download_blob_as_base64(blob_container_client: ContainerClient, file_path: str) -> Optional[str]:
@@ -13,10 +22,15 @@ async def download_blob_as_base64(blob_container_client: ContainerClient, file_p
 
     if not blob.properties or not blob.properties.has_key("content_settings"):
         return None
-    return base64.b64encode(await blob.readall()).decode("utf-8")
+    img = base64.b64encode(await blob.readall()).decode("utf-8")
+    return f"data:image/png;base64,{img}"
 
 
-async def fetch_image(blob_container_client: ContainerClient, result: Document) -> Optional[str]:
+async def fetch_image(blob_container_client: ContainerClient, result: Document) -> Optional[ImageURL]:
     if result.sourcepage:
-        return await download_blob_as_base64(blob_container_client, result.sourcepage)
+        img = await download_blob_as_base64(blob_container_client, result.sourcepage)
+        if img:
+            return {"url": img, "detail": "auto"}
+        else:
+            return None
     return None

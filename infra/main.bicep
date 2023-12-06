@@ -319,9 +319,9 @@ module keyvault 'core/security/key-vault.bicep' = {
     backend
   ]
   params: {
-    name: keyVaultName 
+    name: keyVaultName
     location: location
-    computerVisionId: computerVision.outputs.id 
+    computerVisionId: computerVision.outputs.id
     secretName: computerVisionSecretName
     principalId: principalId
     applicationId: backend.outputs.identityPrincipalId
@@ -443,27 +443,7 @@ module searchSvcContribRoleUser 'core/security/role.bicep' = {
   }
 }
 
-module keyVaultUserRole 'core/security/role.bicep' = if (useGPT4V) {
-  name: 'key-vault-role-user'
-  scope: keyVaultResourceGroup
-  params: {
-    principalId: principalId
-    roleDefinitionId: '00482a5a-887f-4fb3-b363-3b7fe8e74483'
-    principalType: 'User'
-  }
-}
-
 // SYSTEM IDENTITIES
-module keyVaultSystemRole 'core/security/role.bicep' = if (useGPT4V) {
-  name: 'key-vault-role-backend'
-  scope: keyVaultResourceGroup
-  params: {
-    principalId: backend.outputs.identityPrincipalId
-    roleDefinitionId: '00482a5a-887f-4fb3-b363-3b7fe8e74483'
-    principalType: 'ServicePrincipal'
-  }
-}
-
 module openAiRoleBackend 'core/security/role.bicep' = if (openAiHost == 'azure') {
   scope: openAiResourceGroup
   name: 'openai-role-backend'

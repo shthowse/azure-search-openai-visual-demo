@@ -23,7 +23,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
         objectId: principalId
         permissions: {
           secrets: [
-            'all'
+            'set'
+            'list'
+            'get'
           ]
         }
         tenantId: tenant().tenantId
@@ -32,7 +34,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
         objectId: applicationId
         permissions: {
           secrets: [
-            'all'
+            'set'
+            'list'
+            'get'
           ]
         }
         tenantId: tenant().tenantId

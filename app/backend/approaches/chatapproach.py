@@ -89,7 +89,7 @@ class ChatApproach(Approach, ABC):
         system_prompt: str,
         model_id: str,
         history: list[dict[str, str]],
-        user_content: str | list[ChatCompletionContentPartParam],
+        user_content: Union[str, list[ChatCompletionContentPartParam]],
         max_tokens: int,
         few_shots=[],
     ) -> list[ChatCompletionMessageParam]:

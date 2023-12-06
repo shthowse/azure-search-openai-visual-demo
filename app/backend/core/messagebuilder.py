@@ -1,5 +1,5 @@
 import unicodedata
-from typing import List
+from typing import List, Union
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -30,7 +30,7 @@ class MessageBuilder:
         ]
         self.model = chatgpt_model
 
-    def insert_message(self, role: str, content: str | List[ChatCompletionContentPartParam], index: int = 1):
+    def insert_message(self, role: str, content: Union[str, List[ChatCompletionContentPartParam]], index: int = 1):
         """
         Inserts a message into the conversation at the specified index,
         or at index 1 (after system message) if no index is specified.
@@ -55,7 +55,7 @@ class MessageBuilder:
     def count_tokens_for_message(self, message: dict[str, str]):
         return num_tokens_from_messages(message, self.model)
 
-    def normalize_content(self, content: str | List[ChatCompletionContentPartParam]):
+    def normalize_content(self, content: Union[str, List[ChatCompletionContentPartParam]]):
         if isinstance(content, str):
             return unicodedata.normalize("NFC", content)
         elif isinstance(content, list):

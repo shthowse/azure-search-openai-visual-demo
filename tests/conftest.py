@@ -163,36 +163,58 @@ def mock_openai_chatcompletion(monkeypatch):
 @pytest.fixture
 def mock_acs_search(monkeypatch):
     class Caption:
-        def __init__(self, text):
+        def __init__(self, text, highlights=None, additional_properties=None):
             self.text = text
+            self.highlights = highlights or []
+            self.additional_properties = additional_properties or {}
 
-    class AsyncSearchResultsIterator:
-        def __init__(self):
-            self.num = 1
+    class AsyncPageIterator:
+        def __init__(self, data):
+            self.data = data
 
         def __aiter__(self):
             return self
 
         async def __anext__(self):
-            if self.num == 1:
-                self.num = 0
-                return {
-                    "sourcepage": "Benefit_Options-2.pdf",
-                    "sourcefile": "Benefit_Options.pdf",
-                    "content": "There is a whistleblower policy.",
-                    "embeddings": [],
-                    "category": None,
-                    "id": "file-Benefit_Options_pdf-42656E656669745F4F7074696F6E732E706466-page-2",
-                    "@search.score": 0.03279569745063782,
-                    "@search.reranker_score": 3.4577205181121826,
-                    "@search.highlights": None,
-                    "@search.captions": [Caption("Caption: A whistleblower policy.")],
-                }
-            else:
+            if not self.data:
                 raise StopAsyncIteration
+            return self.data.pop(0)  # This should be a list of dictionaries.
 
-    async def mock_search(*args, **kwargs):
+    class AsyncSearchResultsIterator:
+        def __init__(self):
+            self.data = [
+                [
+                    {
+                        "sourcepage": "Benefit_Options-2.pdf",
+                        "sourcefile": "Benefit_Options.pdf",
+                        "content": "There is a whistleblower policy.",
+                        "embeddings": [],
+                        "category": None,
+                        "id": "file-Benefit_Options_pdf-42656E656669745F4F7074696F6E732E706466-page-2",
+                        "@search.score": 0.03279569745063782,
+                        "@search.reranker_score": 3.4577205181121826,
+                        "@search.highlights": None,
+                        "@search.captions": [Caption("Caption: A whistleblower policy.")],
+                    },
+                ]
+            ]
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.data:
+                raise StopAsyncIteration
+            return AsyncPageIterator(self.data.pop(0))
+
+        def by_page(self):
+            return self
+
+    async def mock_search(self, *args, **kwargs):
+        self.filter = kwargs.get("filter")
         return AsyncSearchResultsIterator()
+
+    monkeypatch.setattr(SearchClient, "search", mock_search)
 
     monkeypatch.setattr(SearchClient, "search", mock_search)
 

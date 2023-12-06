@@ -11,6 +11,7 @@ import msal
 import pytest
 import pytest_asyncio
 from azure.core.credentials_async import AsyncTokenCredential
+from azure.keyvault.secrets.aio import SecretClient
 from azure.search.documents.aio import SearchClient
 from openai.types import CreateEmbeddingResponse, Embedding
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
@@ -23,12 +24,81 @@ from openai.types.create_embedding_response import Usage
 import app
 from core.authentication import AuthenticationHelper
 
-MockToken = namedtuple("MockToken", ["token", "expires_on"])
+MockToken = namedtuple("MockToken", ["token", "expires_on", "value"])
+
+
+class MockKeyVaultSecret:
+    def __init__(self, value):
+        self.value = value
 
 
 class MockAzureCredential(AsyncTokenCredential):
     async def get_token(self, uri):
-        return MockToken("mock_token", 9999999999)
+        return MockToken("", 9999999999, "")
+
+    async def get_secret(self, secret_name):
+        return MockKeyVaultSecret("mysecret")
+
+
+class Caption:
+    def __init__(self, text, highlights=None, additional_properties=None):
+        self.text = text
+        self.highlights = highlights or []
+        self.additional_properties = additional_properties or {}
+
+
+class AsyncPageIterator:
+    def __init__(self, data):
+        self.data = data
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self.data:
+            raise StopAsyncIteration
+        return self.data.pop(0)  # This should be a list of dictionaries.
+
+
+class AsyncSearchResultsIterator:
+    def __init__(self):
+        self.data = [
+            [
+                {
+                    "sourcepage": "Benefit_Options-2.pdf",
+                    "sourcefile": "Benefit_Options.pdf",
+                    "content": "There is a whistleblower policy.",
+                    "embeddings": [],
+                    "category": None,
+                    "id": "file-Benefit_Options_pdf-42656E656669745F4F7074696F6E732E706466-page-2",
+                    "@search.score": 0.03279569745063782,
+                    "@search.reranker_score": 3.4577205181121826,
+                    "@search.highlights": None,
+                    "@search.captions": [Caption("Caption: A whistleblower policy.")],
+                },
+            ]
+        ]
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self.data:
+            raise StopAsyncIteration
+        return AsyncPageIterator(self.data.pop(0))
+
+    def by_page(self):
+        return self
+
+
+async def mock_search(self, *args, **kwargs):
+    self.filter = kwargs.get("filter")
+    return AsyncSearchResultsIterator()
+
+
+@pytest.fixture
+def mock_get_secret(monkeypatch):
+    monkeypatch.setattr(SecretClient, "get_secret", MockAzureCredential().get_secret)
 
 
 @pytest.fixture
@@ -162,79 +232,12 @@ def mock_openai_chatcompletion(monkeypatch):
 
 @pytest.fixture
 def mock_acs_search(monkeypatch):
-    class Caption:
-        def __init__(self, text, highlights=None, additional_properties=None):
-            self.text = text
-            self.highlights = highlights or []
-            self.additional_properties = additional_properties or {}
-
-    class AsyncPageIterator:
-        def __init__(self, data):
-            self.data = data
-
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            if not self.data:
-                raise StopAsyncIteration
-            return self.data.pop(0)  # This should be a list of dictionaries.
-
-    class AsyncSearchResultsIterator:
-        def __init__(self):
-            self.data = [
-                [
-                    {
-                        "sourcepage": "Benefit_Options-2.pdf",
-                        "sourcefile": "Benefit_Options.pdf",
-                        "content": "There is a whistleblower policy.",
-                        "embeddings": [],
-                        "category": None,
-                        "id": "file-Benefit_Options_pdf-42656E656669745F4F7074696F6E732E706466-page-2",
-                        "@search.score": 0.03279569745063782,
-                        "@search.reranker_score": 3.4577205181121826,
-                        "@search.highlights": None,
-                        "@search.captions": [Caption("Caption: A whistleblower policy.")],
-                    },
-                ]
-            ]
-
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            if not self.data:
-                raise StopAsyncIteration
-            return AsyncPageIterator(self.data.pop(0))
-
-        def by_page(self):
-            return self
-
-    async def mock_search(self, *args, **kwargs):
-        self.filter = kwargs.get("filter")
-        return AsyncSearchResultsIterator()
-
     monkeypatch.setattr(SearchClient, "search", mock_search)
-
     monkeypatch.setattr(SearchClient, "search", mock_search)
 
 
 @pytest.fixture
 def mock_acs_search_filter(monkeypatch):
-    class AsyncSearchResultsIterator:
-        def __init__(self):
-            self.num = 1
-
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            raise StopAsyncIteration
-
-    async def mock_search(self, *args, **kwargs):
-        self.filter = kwargs.get("filter")
-        return AsyncSearchResultsIterator()
-
     monkeypatch.setattr(SearchClient, "search", mock_search)
 
 
@@ -287,7 +290,9 @@ def mock_env(monkeypatch, request):
 
 
 @pytest_asyncio.fixture()
-async def client(monkeypatch, mock_env, mock_openai_chatcompletion, mock_openai_embedding, mock_acs_search, request):
+async def client(
+    monkeypatch, mock_env, mock_openai_chatcompletion, mock_openai_embedding, mock_acs_search, request, mock_get_secret
+):
     quart_app = app.create_app()
 
     async with quart_app.test_app() as test_app:
@@ -306,6 +311,7 @@ async def auth_client(
     mock_list_groups_success,
     mock_acs_search_filter,
     request,
+    mock_get_secret,
 ):
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "test-storage-account")
     monkeypatch.setenv("AZURE_STORAGE_CONTAINER", "test-storage-container")

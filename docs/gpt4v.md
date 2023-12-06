@@ -27,7 +27,7 @@ This repository now includes an example of integrating GPT-4 Vision with Azure A
    Pull the latest changes.
 
 2. **Enable GPT-4 Vision:**
-   Set the environment variable with `azd Env set USE_GPT4V=true`. This flag is used to deploy necessary components for vision fuctionality and to toggle UI components.
+   Set the environment variable with `azd env set USE_GPT4V true`. This flag is used to deploy necessary components for vision fuctionality and to toggle UI components.
 
 3. **Clean Old Deployments (optional):**
    Run `azd down --purge` for a fresh setup.

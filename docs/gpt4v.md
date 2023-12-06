@@ -12,27 +12,28 @@ This repository now includes an example of integrating GPT-4 Vision with Azure A
 ## Getting Started
 
 ### Prerequisites
-- If using Azure Open AI Ensure your subscription has access to create a GPT 4 turbo with vision model.
-- Ensure you can deploy in a region where all required components are available
-    - Azure Open AI models  
+
+- Create a [Computer Vision account in Azure Portal first](https://ms.portal.azure.com/#create/Microsoft.CognitiveServicesComputerVision), so that you can agree to the Responsible AI terms for that resource. You can delete that account after agreeing.
+- Check that your Azure OpenAI subscription has access to create a GPT-4 Turbo with Vision model.
+- Ensure that you can deploy the Azure OpenAI resource group in [a region where all required components are available](https://learn.microsoft.com/azure/cognitive-services/openai/concepts/models#model-summary-table-and-region-availability):
+    - Azure Open AI models
         - gpt-35-turbo
         - text-embedding-ada-002
         - gpt-4v
-
     - [Azure AI Vision](https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/)
 
 ### Setup and Usage
 
-1. **Update Repository:**
+1. **Update repository:**
    Pull the latest changes.
 
-2. **Enable GPT-4 Vision:**
+2. **Enable GPT-4 vision:**
    Set the environment variable with `azd env set USE_GPT4V true`. This flag is used to deploy necessary components for vision fuctionality and to toggle UI components.
 
-3. **Clean Old Deployments (optional):**
+3. **Clean old deployments (optional):**
    Run `azd down --purge` for a fresh setup.
 
-4. **Start the Application:**
+4. **Start the application:**
    Execute `azd up` to build, provision, deploy, and initiate document preparation.
 
 

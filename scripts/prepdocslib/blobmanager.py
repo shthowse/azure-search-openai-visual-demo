@@ -81,7 +81,10 @@ class BlobManager:
             new_img.paste(original_img, (0, text_height))
 
             # Draw the text on the white area
-            font = ImageFont.truetype("arial.ttf", 20)
+            try:
+                font = ImageFont.truetype("arial.ttf", 20)
+            except OSError:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 20)
             draw = ImageDraw.Draw(new_img)
             text = f"SourceFileName:{blob_name}"
 

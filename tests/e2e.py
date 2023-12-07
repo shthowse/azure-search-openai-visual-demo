@@ -92,7 +92,7 @@ def test_chat(page: Page, live_server_url: str):
     # Show the thought process
     page.get_by_label("Show thought process").click()
     expect(page.get_by_title("Thought process")).to_be_visible()
-    expect(page.get_by_text("Searched for:")).to_be_visible()
+    expect(page.get_by_text("Generated search query")).to_be_visible()
 
     # Show the supporting content
     page.get_by_label("Show supporting content").click()

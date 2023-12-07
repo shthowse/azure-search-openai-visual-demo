@@ -51,7 +51,7 @@ param computerVisionSecretName string = 'computerVisionSecret'
     type: 'location'
   }
 })
-param openAiResourceGroupLocation string = location
+param openAiResourceGroupLocation string
 
 param openAiSkuName string = 'S0'
 
@@ -311,22 +311,37 @@ module computerVision 'core/ai/cognitiveservices.bicep' = if (useGPT4V) {
 }
 
 
-module keyvault 'core/security/key-vault.bicep' = {
-  scope: computerVisionResourceGroup
+// Currently, we only need Key Vault for storing Computer Vision key,
+// which is only used for GPT-4V.
+module keyVault 'core/security/keyvault.bicep' = if (useGPT4V) {
   name: 'keyvault'
-  dependsOn:[
-    computerVision
-    backend
-  ]
+  scope: keyVaultResourceGroup
   params: {
     name: keyVaultName
     location: location
-    computerVisionId: computerVision.outputs.id
-    secretName: computerVisionSecretName
     principalId: principalId
-    applicationId: backend.outputs.identityPrincipalId
   }
 }
+
+module webKVAccess './core/security/keyvault-access.bicep' = if (useGPT4V) {
+  name: 'web-keyvault-access'
+  scope: keyVaultResourceGroup
+  params: {
+    keyVaultName: keyVaultName
+    principalId: backend.outputs.identityPrincipalId
+  }
+}
+
+module computerVisionKVSecret 'core/security/keyvault-secret.bicep' = if (useGPT4V) {
+  name: 'keyvault-secret'
+  scope: keyVaultResourceGroup
+  params: {
+    keyVaultName: keyVault.outputs.name
+    name: computerVisionSecretName
+    secretValue: computerVision.outputs.id
+  }
+}
+
 
 module searchService 'core/search/search-services.bicep' = {
   name: 'search-service'
@@ -496,8 +511,8 @@ output OPENAI_API_KEY string = (openAiHost == 'openai') ? openAiApiKey : ''
 output OPENAI_ORGANIZATION string = (openAiHost == 'openai') ? openAiApiOrganization : ''
 
 output AZURE_VISION_ENDPOINT string = useGPT4V ? computerVision.outputs.endpoint : ''
-output VISION_SECRET_NAME string = useGPT4V ? keyvault.outputs.secretName : ''
-output AZURE_KEY_VAULT_NAME string = useGPT4V ? keyvault.outputs.name : ''
+output VISION_SECRET_NAME string = useGPT4V ? computerVisionSecretName : ''
+output AZURE_KEY_VAULT_NAME string = useGPT4V ? keyVault.outputs.name : ''
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

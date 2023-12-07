@@ -138,7 +138,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
 
-        # Allow client to replace the entire prompt, or to inject into the exiting prompt using >>>
+        # Allow client to replace the entire prompt, or to inject into the existing prompt using >>>
         system_message = self.get_system_prompt(
             overrides.get("prompt_template"),
             self.follow_up_questions_prompt_content if overrides.get("suggest_followup_questions") else "",

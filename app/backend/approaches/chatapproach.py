@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Union
+from typing import Any, AsyncGenerator, Optional, Union
 
 from openai.types.chat import (
     ChatCompletion,
@@ -56,17 +56,17 @@ class ChatApproach(Approach, ABC):
     async def run_until_final_call(self, history, overrides, auth_claims, should_stream) -> tuple:
         pass
 
-    def get_system_prompt(self, overrides, follow_up_questions_prompt) -> str:
-        if overrides is None:
+    def get_system_prompt(self, override_prompt: Optional[str], follow_up_questions_prompt: str) -> str:
+        if override_prompt is None:
             return self.system_message_chat_conversation.format(
                 injected_prompt="", follow_up_questions_prompt=follow_up_questions_prompt
             )
-        elif overrides.startswith(">>>"):
+        elif override_prompt.startswith(">>>"):
             return self.system_message_chat_conversation.format(
-                injected_prompt=overrides[3:] + "\n", follow_up_questions_prompt=follow_up_questions_prompt
+                injected_prompt=override_prompt[3:] + "\n", follow_up_questions_prompt=follow_up_questions_prompt
             )
         else:
-            return overrides.format(follow_up_questions_prompt=follow_up_questions_prompt)
+            return override_prompt.format(follow_up_questions_prompt=follow_up_questions_prompt)
 
     def get_search_query(self, chat_completion: ChatCompletion, user_query: str):
         response_message = chat_completion.choices[0].message

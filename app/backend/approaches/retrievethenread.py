@@ -101,10 +101,11 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         message_builder = MessageBuilder(template, model)
 
         # Process results
-        sources_content = "Sources:\n" + "\n".join(result.content or "" for result in results)
+        sources_content = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
 
         # Append user message
-        user_content = q + "\n" + sources_content
+        content = "\n".join(sources_content)
+        user_content = q + "\n" + f"Sources:\n {content}"
         message_builder.insert_message("user", user_content)
         message_builder.insert_message("assistant", self.answer)
         message_builder.insert_message("user", self.question)
@@ -120,8 +121,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
             )
         ).model_dump()
 
-        data_points = {"text": [result.content or "" for result in results]}
-
+        data_points = {"text": sources_content}
         extra_info = {
             "data_points": data_points,
             "thoughts": [
@@ -136,6 +136,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                 ThoughtStep("Prompt", [str(message) for message in message_builder.messages]),
             ],
         }
+
         chat_completion["choices"][0]["context"] = extra_info
         chat_completion["choices"][0]["session_state"] = session_state
         return chat_completion

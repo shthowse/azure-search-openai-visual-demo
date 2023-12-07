@@ -114,9 +114,12 @@ class RetrieveThenReadVisionApproach(Approach):
         message_builder = MessageBuilder(template, model)
 
         # Process results
-        sources_content = "Sources:\n" + "\n".join([result.content or "" for result in results])
+
+        sources_content = self.get_sources_content(results, use_semantic_captions, use_image_citation=True)
+
         if include_gtpV_text:
-            user_content.append({"text": sources_content, "type": "text"})
+            content = "\n".join(sources_content)
+            user_content.append({"text": content, "type": "text"})
         if include_gtpV_images:
             for result in results:
                 url = await fetch_image(self.blob_container_client, result)
@@ -138,7 +141,7 @@ class RetrieveThenReadVisionApproach(Approach):
         ).model_dump()
 
         data_points = {
-            "text": [result.content or "" for result in results],
+            "text": sources_content,
             "images": [d["image_url"] for d in image_list],
         }
 

@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, List, Optional, Union, cast
 
@@ -12,6 +13,7 @@ from azure.search.documents.models import (
 from openai import AsyncOpenAI
 
 from core.authentication import AuthenticationHelper
+from text import nonewlines
 
 
 @dataclass
@@ -143,6 +145,34 @@ class Approach:
                     )
                 )
         return documents
+
+    def get_sources_content(
+        self, results: List[Document], use_semantic_captions: bool, use_image_citation: bool
+    ) -> list[str]:
+        if use_semantic_captions:
+            return [
+                (self.get_citation((doc.sourcepage or ""), use_image_citation))
+                + ": "
+                + nonewlines(" . ".join([cast(str, c.text) for c in (doc.captions or [])]))
+                for doc in results
+            ]
+        else:
+            return [
+                (self.get_citation((doc.sourcepage or ""), use_image_citation)) + ": " + nonewlines(doc.content or "")
+                for doc in results
+            ]
+
+    def get_citation(self, sourcepage: str, use_image_citation: bool) -> str:
+        if use_image_citation:
+            return sourcepage
+        else:
+            path, ext = os.path.splitext(sourcepage)
+            if ext.lower() == ".png":
+                page_idx = path.rfind("-")
+                page_number = int(path[page_idx + 1 :])
+                return f"{path[:page_idx]}.pdf#page={page_number}"
+
+            return sourcepage
 
     async def compute_text_embedding(self, q: str):
         embedding = await self.openai_client.embeddings.create(

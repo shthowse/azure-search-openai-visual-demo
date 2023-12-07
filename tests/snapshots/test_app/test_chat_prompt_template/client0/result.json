@@ -3,9 +3,7 @@
         {
             "context": {
                 "data_points": {
-                    "text": [
-                        "There is a whistleblower policy."
-                    ]
+                    "text": "Benefit_Options-2.pdf: There is a whistleblower policy."
                 },
                 "thoughts": [
                     {
@@ -48,7 +46,7 @@
                     {
                         "description": [
                             "{'role': 'system', 'content': 'You are a cat.'}",
-                            "{'role': 'user', 'content': 'What is the capital of France?\\n\\nSources:\\nThere is a whistleblower policy.'}"
+                            "{'role': 'user', 'content': 'What is the capital of France?\\n\\nSources:\\nBenefit_Options-2.pdf: There is a whistleblower policy.'}"
                         ],
                         "props": null,
                         "title": "Prompt"

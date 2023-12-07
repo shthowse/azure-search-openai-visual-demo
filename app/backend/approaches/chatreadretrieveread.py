@@ -169,7 +169,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             max_tokens=messages_token_limit,
         )
 
-        data_points = {"text": content}
+        data_points = {"text": sources_content}
 
         extra_info = {
             "data_points": data_points,

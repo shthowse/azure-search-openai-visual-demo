@@ -3,7 +3,9 @@
         {
             "context": {
                 "data_points": {
-                    "text": "Benefit_Options-2.pdf: There is a whistleblower policy."
+                    "text": [
+                        "Benefit_Options-2.pdf: There is a whistleblower policy."
+                    ]
                 },
                 "followup_questions": [
                     "What is the capital of Spain?"

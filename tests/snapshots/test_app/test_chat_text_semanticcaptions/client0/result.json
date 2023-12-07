@@ -3,7 +3,9 @@
         {
             "context": {
                 "data_points": {
-                    "text": "Benefit_Options-2.pdf: Caption: A whistleblower policy."
+                    "text": [
+                        "Benefit_Options-2.pdf: Caption: A whistleblower policy."
+                    ]
                 },
                 "thoughts": [
                     {

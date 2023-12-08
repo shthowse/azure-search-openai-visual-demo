@@ -45,13 +45,13 @@ param keyVaultServiceName string = ''
 param computerVisionSecretName string = 'computerVisionSecret'
 
 @description('Location for the OpenAI resource group')
-@allowed([ 'canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus', 'australiaeast' ])
+@allowed(['canadaeast', 'eastus', 'eastus2', 'francecentral', 'switzerlandnorth', 'uksouth', 'japaneast', 'northcentralus', 'australiaeast', 'swedencentral'])
 @metadata({
   azd: {
     type: 'location'
   }
 })
-param openAiResourceGroupLocation string = location
+param openAiResourceGroupLocation string
 
 param openAiSkuName string = 'S0'
 
@@ -134,17 +134,28 @@ resource keyVaultResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' e
 }
 
 // Monitor application with Azure Monitor
-module monitoring './core/monitor/monitoring.bicep' = if (useApplicationInsights) {
+module monitoring 'core/monitor/monitoring.bicep' = if (useApplicationInsights) {
   name: 'monitoring'
   scope: resourceGroup
   params: {
     location: location
     tags: tags
     applicationInsightsName: !empty(applicationInsightsName) ? applicationInsightsName : '${abbrs.insightsComponents}${resourceToken}'
-    applicationInsightsDashboardName: !empty(applicationInsightsDashboardName) ? applicationInsightsDashboardName : '${abbrs.portalDashboards}${resourceToken}'
     logAnalyticsName: !empty(logAnalyticsName) ? logAnalyticsName : '${abbrs.operationalInsightsWorkspaces}${resourceToken}'
   }
 }
+
+
+module applicationInsightsDashboard 'backend-dashboard.bicep' = if (useApplicationInsights) {
+  name: 'application-insights-dashboard'
+  scope: resourceGroup
+  params: {
+    name: !empty(applicationInsightsDashboardName) ? applicationInsightsDashboardName : '${abbrs.portalDashboards}${resourceToken}'
+    location: location
+    applicationInsightsName: monitoring.outputs.applicationInsightsName
+  }
+}
+
 
 // Create an App Service Plan to group applications under the same payment plan and SKU
 module appServicePlan 'core/host/appserviceplan.bicep' = {
@@ -235,7 +246,10 @@ var defaultOpenAiDeployments = [
       name: embeddingModelName
       version: '2'
     }
-    capacity: embeddingDeploymentCapacity
+    sku: {
+      name: 'Standard'
+      capacity: embeddingDeploymentCapacity
+    }
   }
 ]
 
@@ -297,21 +311,37 @@ module computerVision 'core/ai/cognitiveservices.bicep' = if (useGPT4V == true) 
 }
 
 
-module keyvault 'core/security/key-vault.bicep' = if (useGPT4V == true) {
-  scope: computerVisionResourceGroup
+// Currently, we only need Key Vault for storing Computer Vision key,
+// which is only used for GPT-4V.
+module keyVault 'core/security/keyvault.bicep' = if (useGPT4V) {
   name: 'keyvault'
-  dependsOn:[
-    computerVision, backend
-  ]
+  scope: keyVaultResourceGroup
   params: {
-    name: keyVaultName 
+    name: keyVaultName
     location: location
-    computerVisionId: computerVision.outputs.id 
-    secretName: computerVisionSecretName
     principalId: principalId
-    applicationId: backend.outputs.identityPrincipalId
   }
 }
+
+module webKVAccess './core/security/keyvault-access.bicep' = if (useGPT4V) {
+  name: 'web-keyvault-access'
+  scope: keyVaultResourceGroup
+  params: {
+    keyVaultName: keyVaultName
+    principalId: backend.outputs.identityPrincipalId
+  }
+}
+
+module computerVisionKVSecret 'core/security/keyvault-secret.bicep' = if (useGPT4V) {
+  name: 'keyvault-secret'
+  scope: keyVaultResourceGroup
+  params: {
+    keyVaultName: useGPT4V ? keyVault.outputs.name : ''
+    name: computerVisionSecretName
+    secretValue: useGPT4V ? computerVision.outputs.id : ''
+  }
+}
+
 
 module searchService 'core/search/search-services.bicep' = {
   name: 'search-service'
@@ -428,27 +458,7 @@ module searchSvcContribRoleUser 'core/security/role.bicep' = {
   }
 }
 
-module keyVaultUserRole 'core/security/role.bicep' = if (useGPT4V) {
-  name: 'key-vault-role-user'
-  scope: keyVaultResourceGroup
-  params: {
-    principalId: principalId
-    roleDefinitionId: '00482a5a-887f-4fb3-b363-3b7fe8e74483'
-    principalType: 'User'
-  }
-}
-
 // SYSTEM IDENTITIES
-module keyVaultSystemRole 'core/security/role.bicep' = if (useGPT4V) {
-  name: 'key-vault-role-backend'
-  scope: keyVaultResourceGroup
-  params: {
-    principalId: backend.outputs.identityPrincipalId
-    roleDefinitionId: '00482a5a-887f-4fb3-b363-3b7fe8e74483'
-    principalType: 'ServicePrincipal'
-  }
-}
-
 module openAiRoleBackend 'core/security/role.bicep' = if (openAiHost == 'azure') {
   scope: openAiResourceGroup
   name: 'openai-role-backend'
@@ -501,8 +511,8 @@ output OPENAI_API_KEY string = (openAiHost == 'openai') ? openAiApiKey : ''
 output OPENAI_ORGANIZATION string = (openAiHost == 'openai') ? openAiApiOrganization : ''
 
 output AZURE_VISION_ENDPOINT string = useGPT4V ? computerVision.outputs.endpoint : ''
-output VISION_SECRET_NAME string = useGPT4V ? keyvault.outputs.secretName : ''
-output AZURE_KEY_VAULT_NAME string = useGPT4V ? keyvault.outputs.name : ''
+output VISION_SECRET_NAME string = useGPT4V ? computerVisionSecretName : ''
+output AZURE_KEY_VAULT_NAME string = useGPT4V ? keyVault.outputs.name : ''
 
 output AZURE_FORMRECOGNIZER_SERVICE string = formRecognizer.outputs.name
 output AZURE_FORMRECOGNIZER_RESOURCE_GROUP string = formRecognizerResourceGroup.name

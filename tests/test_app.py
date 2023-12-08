@@ -5,8 +5,43 @@ from unittest import mock
 
 import pytest
 import quart.testing.app
+from httpx import Request, Response
+from openai import BadRequestError
 
 import app
+
+
+def fake_response(http_code):
+    return Response(http_code, request=Request(method="get", url="https://foo.bar/"))
+
+
+# See https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/content-filter
+filtered_response = BadRequestError(
+    message="The response was filtered",
+    body={
+        "message": "The response was filtered",
+        "type": None,
+        "param": "prompt",
+        "code": "content_filter",
+        "status": 400,
+    },
+    response=Response(
+        400, request=Request(method="get", url="https://foo.bar/"), json={"error": {"code": "content_filter"}}
+    ),
+)
+
+
+def thoughts_contains_text(thoughts, text):
+    found = False
+    for thought in thoughts:
+        description = thought["description"]
+        if isinstance(description, str) and text in description:
+            found = True
+            break
+        elif isinstance(description, list) and any(text in item for item in description):
+            found = True
+            break
+    return found
 
 
 @pytest.mark.asyncio
@@ -44,6 +79,40 @@ async def test_ask_request_must_be_json(client):
     assert response.status_code == 415
     result = await response.get_json()
     assert result["error"] == "request must be json"
+
+
+@pytest.mark.asyncio
+async def test_ask_handle_exception(client, monkeypatch, snapshot, caplog):
+    monkeypatch.setattr(
+        "approaches.retrievethenread.RetrieveThenReadApproach.run",
+        mock.Mock(side_effect=ZeroDivisionError("something bad happened")),
+    )
+
+    response = await client.post(
+        "/ask",
+        json={"messages": [{"content": "What is the capital of France?", "role": "user"}]},
+    )
+    assert response.status_code == 500
+    result = await response.get_json()
+    assert "Exception in /ask: something bad happened" in caplog.text
+    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
+
+
+@pytest.mark.asyncio
+async def test_ask_handle_exception_contentsafety(client, monkeypatch, snapshot, caplog):
+    monkeypatch.setattr(
+        "approaches.retrievethenread.RetrieveThenReadApproach.run",
+        mock.Mock(side_effect=filtered_response),
+    )
+
+    response = await client.post(
+        "/ask",
+        json={"messages": [{"content": "How do I do something bad?", "role": "user"}]},
+    )
+    assert response.status_code == 400
+    result = await response.get_json()
+    assert "Exception in /ask: The response was filtered" in caplog.text
+    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
 
 @pytest.mark.asyncio
@@ -142,6 +211,72 @@ async def test_chat_request_must_be_json(client):
     assert response.status_code == 415
     result = await response.get_json()
     assert result["error"] == "request must be json"
+
+
+@pytest.mark.asyncio
+async def test_chat_handle_exception(client, monkeypatch, snapshot, caplog):
+    monkeypatch.setattr(
+        "approaches.chatreadretrieveread.ChatReadRetrieveReadApproach.run",
+        mock.Mock(side_effect=ZeroDivisionError("something bad happened")),
+    )
+
+    response = await client.post(
+        "/chat",
+        json={"messages": [{"content": "What is the capital of France?", "role": "user"}]},
+    )
+    assert response.status_code == 500
+    result = await response.get_json()
+    assert "Exception in /chat: something bad happened" in caplog.text
+    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
+
+
+@pytest.mark.asyncio
+async def test_chat_handle_exception_contentsafety(client, monkeypatch, snapshot, caplog):
+    monkeypatch.setattr(
+        "approaches.chatreadretrieveread.ChatReadRetrieveReadApproach.run",
+        mock.Mock(side_effect=filtered_response),
+    )
+
+    response = await client.post(
+        "/chat",
+        json={"messages": [{"content": "How do I do something bad?", "role": "user"}]},
+    )
+    assert response.status_code == 400
+    result = await response.get_json()
+    assert "Exception in /chat: The response was filtered" in caplog.text
+    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
+
+
+@pytest.mark.asyncio
+async def test_chat_handle_exception_streaming(client, monkeypatch, snapshot, caplog):
+    chat_client = client.app.config[app.CONFIG_OPENAI_CLIENT]
+    monkeypatch.setattr(
+        chat_client.chat.completions, "create", mock.Mock(side_effect=ZeroDivisionError("something bad happened"))
+    )
+
+    response = await client.post(
+        "/chat",
+        json={"messages": [{"content": "What is the capital of France?", "role": "user"}], "stream": True},
+    )
+    assert response.status_code == 200
+    assert "Exception while generating response stream: something bad happened" in caplog.text
+    result = await response.get_data()
+    snapshot.assert_match(result, "result.jsonlines")
+
+
+@pytest.mark.asyncio
+async def test_chat_handle_exception_contentsafety_streaming(client, monkeypatch, snapshot, caplog):
+    chat_client = client.app.config[app.CONFIG_OPENAI_CLIENT]
+    monkeypatch.setattr(chat_client.chat.completions, "create", mock.Mock(side_effect=filtered_response))
+
+    response = await client.post(
+        "/chat",
+        json={"messages": [{"content": "How do I do something bad?", "role": "user"}], "stream": True},
+    )
+    assert response.status_code == 200
+    assert "Exception while generating response stream: The response was filtered" in caplog.text
+    result = await response.get_data()
+    snapshot.assert_match(result, "result.jsonlines")
 
 
 @pytest.mark.asyncio
@@ -346,7 +481,7 @@ async def test_chat_with_history(client, snapshot):
     )
     assert response.status_code == 200
     result = await response.get_json()
-    assert result["choices"][0]["context"]["thoughts"].find("performance review") != -1
+    assert thoughts_contains_text(result["choices"][0]["context"]["thoughts"], "performance review")
     snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
 
@@ -374,7 +509,7 @@ async def test_chat_with_long_history(client, snapshot, caplog):
     assert response.status_code == 200
     result = await response.get_json()
     # Assert that it doesn't find the first message, since it wouldn't fit in the max tokens.
-    assert result["choices"][0]["context"]["thoughts"].find("Is there a dress code?") == -1
+    assert not thoughts_contains_text(result["choices"][0]["context"]["thoughts"], "Is there a dress code?")
     assert "Reached max tokens" in caplog.text
     snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 

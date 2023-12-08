@@ -70,6 +70,7 @@ export const VectorSettings = ({ updateRetrievalMode, updateVectorFields, showIm
                     options={vectorFields}
                     onChange={onVectorFieldsChange}
                     selectedKey={vectorFieldOption}
+                    defaultSelectedKey={VectorFieldOptions.Both}
                     label="Vector Fields (Multi-query vector search)"
                 />
             )}

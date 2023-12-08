@@ -20,7 +20,7 @@ from azure.search.documents.indexes.models import (
     VectorSearchAlgorithmKind,
     VectorSearchAlgorithmMetric,
     VectorSearchProfile,
-    VectorSearchVectorizer,
+    VectorSearchVectorizer
 )
 
 from .blobmanager import BlobManager
@@ -79,7 +79,7 @@ class SearchManager:
                     sortable=False,
                     facetable=False,
                     vector_search_dimensions=1536,
-                    vector_search_profile="myHnswProfile",
+                    vector_search_profile="embedding_config",
                 ),
                 SimpleField(name="category", type="Edm.String", filterable=True, facetable=True),
                 SimpleField(name="sourcepage", type="Edm.String", filterable=True, facetable=True),
@@ -107,7 +107,7 @@ class SearchManager:
                         sortable=False,
                         facetable=False,
                         vector_search_dimensions=1024,
-                        vector_search_configuration="myHnsw",
+                        vector_search_profile="embedding_config",
                     ),
                 )
 
@@ -127,36 +127,17 @@ class SearchManager:
                 vector_search=VectorSearch(
                     algorithms=[
                         HnswVectorSearchAlgorithmConfiguration(
-                            name="myHnsw",
+                            name="hnsw_config",
                             kind=VectorSearchAlgorithmKind.HNSW,
-                            parameters=HnswParameters(
-                                m=4,
-                                ef_construction=400,
-                                ef_search=500,
-                                metric=VectorSearchAlgorithmMetric.COSINE,
-                            ),
-                        ),
-                        ExhaustiveKnnVectorSearchAlgorithmConfiguration(
-                            name="myExhaustiveKnn",
-                            kind=VectorSearchAlgorithmKind.EXHAUSTIVE_KNN,
-                            parameters=ExhaustiveKnnParameters(
-                                metric=VectorSearchAlgorithmMetric.COSINE,
-                            ),
-                        ),
+                            parameters=HnswParameters(metric="cosine"),
+                        )
                     ],
                     profiles=[
                         VectorSearchProfile(
-                            name="myHnswProfile",
-                            algorithm="myHnsw",
-                            vectorizer="myOpenAI",
-                        ),
-                        VectorSearchProfile(
-                            name="myExhaustiveKnnProfile",
-                            algorithm="myExhaustiveKnn",
-                            vectorizer="myOpenAI",
+                            name="embedding_config",
+                            algorithm="hnsw_config",
                         ),
                     ],
-                    vectorizers=vectorizers,
                 ),
             )
             if self.search_info.index_name not in [name async for name in search_index_client.list_index_names()]:
@@ -172,10 +153,10 @@ class SearchManager:
         section_batches = [sections[i : i + MAX_BATCH_SIZE] for i in range(0, len(sections), MAX_BATCH_SIZE)]
 
         async with self.search_info.create_search_client() as search_client:
-            for batch in section_batches:
+            for batch_index, batch in enumerate(section_batches):
                 documents = [
                     {
-                        "id": f"{section.content.filename_to_id()}-page-{i}",
+                        "id": f"{section.content.filename_to_id()}-page-{section_index + batch_index * MAX_BATCH_SIZE}",
                         "content": section.split_page.text,
                         "category": section.category,
                         "sourcepage": BlobManager.blob_image_name_from_file_page(
@@ -188,7 +169,7 @@ class SearchManager:
                         "sourcefile": section.content.filename(),
                         **section.content.acls,
                     }
-                    for i, section in enumerate(batch)
+                    for section_index, section in enumerate(batch)
                 ]
                 if self.embeddings:
                     embeddings = await self.embeddings.create_embeddings(

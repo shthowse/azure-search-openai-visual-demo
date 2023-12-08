@@ -47,7 +47,6 @@ if ($env:VISION_SECRET_NAME) {
 
 $dataArg = "`"$cwd/data/*`""
 if ($env:USE_GPT4V -eq $true) {
-  $dataArg = "`"$cwd/data/GPT4V_Examples/*`""
   $searchImagesArg = "--searchimages"
 }
 

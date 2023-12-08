@@ -1,12 +1,17 @@
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Union
+from typing import Any, AsyncGenerator, Optional, Union
 
-import aiohttp
-import openai
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionContentPartParam,
+    ChatCompletionMessageParam,
+)
 
 from approaches.approach import Approach
+from core.messagebuilder import MessageBuilder
 
 
 class ChatApproach(Approach, ABC):
@@ -51,33 +56,63 @@ class ChatApproach(Approach, ABC):
     async def run_until_final_call(self, history, overrides, auth_claims, should_stream) -> tuple:
         pass
 
-    def get_system_prompt(self, overrides, follow_up_questions_prompt) -> str:
-        if overrides is None:
+    def get_system_prompt(self, override_prompt: Optional[str], follow_up_questions_prompt: str) -> str:
+        if override_prompt is None:
             return self.system_message_chat_conversation.format(
                 injected_prompt="", follow_up_questions_prompt=follow_up_questions_prompt
             )
-        elif overrides.startswith(">>>"):
+        elif override_prompt.startswith(">>>"):
             return self.system_message_chat_conversation.format(
-                injected_prompt=overrides[3:] + "\n", follow_up_questions_prompt=follow_up_questions_prompt
+                injected_prompt=override_prompt[3:] + "\n", follow_up_questions_prompt=follow_up_questions_prompt
             )
         else:
-            return overrides.format(follow_up_questions_prompt=follow_up_questions_prompt)
+            return override_prompt.format(follow_up_questions_prompt=follow_up_questions_prompt)
 
-    def get_search_query(self, chat_completion: dict[str, Any], user_query: str):
-        response_message = chat_completion["choices"][0]["message"]
-        if function_call := response_message.get("function_call"):
-            if function_call["name"] == "search_sources":
-                arg = json.loads(function_call["arguments"])
+    def get_search_query(self, chat_completion: ChatCompletion, user_query: str):
+        response_message = chat_completion.choices[0].message
+        if function_call := response_message.function_call:
+            if function_call.name == "search_sources":
+                arg = json.loads(function_call.arguments)
                 search_query = arg.get("search_query", self.NO_RESPONSE)
                 if search_query != self.NO_RESPONSE:
                     return search_query
-        elif query_text := response_message.get("content"):
+        elif query_text := response_message.content:
             if query_text.strip() != self.NO_RESPONSE:
                 return query_text
         return user_query
 
     def extract_followup_questions(self, content: str):
         return content.split("<<")[0], re.findall(r"<<([^>>]+)>>", content)
+
+    def get_messages_from_history(
+        self,
+        system_prompt: str,
+        model_id: str,
+        history: list[dict[str, str]],
+        user_content: Union[str, list[ChatCompletionContentPartParam]],
+        max_tokens: int,
+        few_shots=[],
+    ) -> list[ChatCompletionMessageParam]:
+        message_builder = MessageBuilder(system_prompt, model_id)
+
+        # Add examples to show the chat what responses we want. It will try to mimic any responses and make sure they match the rules laid out in the system message.
+        for shot in reversed(few_shots):
+            message_builder.insert_message(shot.get("role"), shot.get("content"))
+
+        append_index = len(few_shots) + 1
+
+        message_builder.insert_message(self.USER, user_content, index=append_index)
+        total_token_count = message_builder.count_tokens_for_message(dict(message_builder.messages[-1]))  # type: ignore
+
+        newest_to_oldest = list(reversed(history[:-1]))
+        for message in newest_to_oldest:
+            potential_message_count = message_builder.count_tokens_for_message(message)
+            if (total_token_count + potential_message_count) > max_tokens:
+                logging.debug("Reached max tokens of %d, history will be truncated", max_tokens)
+                break
+            message_builder.insert_message(message["role"], message["content"], index=append_index)
+            total_token_count += potential_message_count
+        return message_builder.messages
 
     async def run_without_streaming(
         self,
@@ -89,7 +124,8 @@ class ChatApproach(Approach, ABC):
         extra_info, chat_coroutine = await self.run_until_final_call(
             history, overrides, auth_claims, should_stream=False
         )
-        chat_resp = dict(await chat_coroutine)
+        chat_completion_response: ChatCompletion = await chat_coroutine
+        chat_resp = chat_completion_response.model_dump()  # Convert to dict to make it JSON serializable
         chat_resp["choices"][0]["context"] = extra_info
         if overrides.get("suggest_followup_questions"):
             content, followup_questions = self.extract_followup_questions(chat_resp["choices"][0]["message"]["content"])
@@ -123,11 +159,13 @@ class ChatApproach(Approach, ABC):
 
         followup_questions_started = False
         followup_content = ""
-        async for event in await chat_coroutine:
+        async for event_chunk in await chat_coroutine:
             # "2023-07-01-preview" API version has a bug where first response has empty choices
+            event = event_chunk.model_dump()  # Convert pydantic model to dict
             if event["choices"]:
                 # if event contains << and not >>, it is start of follow-up question, truncate
-                content = event["choices"][0]["delta"].get("content", "")
+                content = event["choices"][0]["delta"].get("content")
+                content = content or ""  # content may either not exist in delta, or explicitly be None
                 if overrides.get("suggest_followup_questions") and "<<" in content:
                     followup_questions_started = True
                     earlier_content = content[: content.index("<<")]
@@ -158,11 +196,8 @@ class ChatApproach(Approach, ABC):
     ) -> Union[dict[str, Any], AsyncGenerator[dict[str, Any], None]]:
         overrides = context.get("overrides", {})
         auth_claims = context.get("auth_claims", {})
+
         if stream is False:
-            # Workaround for: https://github.com/openai/openai-python/issues/371
-            async with aiohttp.ClientSession() as s:
-                openai.aiosession.set(s)
-                response = await self.run_without_streaming(messages, overrides, auth_claims, session_state)
-            return response
+            return await self.run_without_streaming(messages, overrides, auth_claims, session_state)
         else:
             return self.run_with_streaming(messages, overrides, auth_claims, session_state)

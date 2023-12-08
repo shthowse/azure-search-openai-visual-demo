@@ -36,7 +36,7 @@ class BlobManager:
 
     async def upload_blob(self, file: File) -> Optional[List[str]]:
         async with BlobServiceClient(
-            account_url=self.endpoint, credential=self.credential
+            account_url=self.endpoint, credential=self.credential, max_single_put_size=4 * 1024 * 1024
         ) as service_client, service_client.get_container_client(self.container) as container_client:
             if not await container_client.exists():
                 await container_client.create_container()
@@ -102,7 +102,10 @@ class BlobManager:
             new_img.paste(original_img, (0, text_height))
 
             # Draw the text on the white area
-            font = ImageFont.truetype("arial.ttf", 20)
+            try:
+                font = ImageFont.truetype("arial.ttf", 20)
+            except OSError:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 20)
             draw = ImageDraw.Draw(new_img)
             text = f"SourceFileName:{blob_name}"
 

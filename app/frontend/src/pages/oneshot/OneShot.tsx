@@ -173,7 +173,7 @@ export function Component(): JSX.Element {
                 <h1 className={styles.oneshotTitle}>Ask your data</h1>
                 <div className={styles.oneshotQuestionInput}>
                     <QuestionInput
-                        placeholder="Which years did the housing market take a hit?" //"Example: Does my plan cover annual eye exams?"
+                        placeholder="Example: Does my plan cover annual eye exams?"
                         disabled={isLoading}
                         initQuestion={question}
                         onSend={question => makeApiRequest(question)}
@@ -286,17 +286,6 @@ export function Component(): JSX.Element {
                         onChange={onUseGroupsSecurityFilterChange}
                     />
                 )}
-                <Dropdown
-                    className={styles.oneshotSettingsSeparator}
-                    label="Retrieval mode"
-                    options={[
-                        { key: "hybrid", text: "Vectors + Text (Hybrid)", selected: retrievalMode == RetrievalMode.Hybrid, data: RetrievalMode.Hybrid },
-                        { key: "vectors", text: "Vectors", selected: retrievalMode == RetrievalMode.Vectors, data: RetrievalMode.Vectors },
-                        { key: "text", text: "Text", selected: retrievalMode == RetrievalMode.Text, data: RetrievalMode.Text }
-                    ]}
-                    required
-                    onChange={onRetrievalModeChange}
-                />
                 {useLogin && <TokenClaimsDisplay />}
             </Panel>
         </div>

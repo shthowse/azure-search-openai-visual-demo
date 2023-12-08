@@ -8,114 +8,63 @@ import aiohttp
 import azure.storage.filedatalake
 import azure.storage.filedatalake.aio
 import msal
-import openai
 import pytest
 import pytest_asyncio
 from azure.core.credentials_async import AsyncTokenCredential
+from azure.keyvault.secrets.aio import SecretClient
 from azure.search.documents.aio import SearchClient
+from openai.types import CreateEmbeddingResponse, Embedding
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
+from openai.types.chat.chat_completion import (
+    ChatCompletionMessage,
+    Choice,
+)
+from openai.types.create_embedding_response import Usage
 
 import app
 from core.authentication import AuthenticationHelper
 
-MockToken = namedtuple("MockToken", ["token", "expires_on"])
+MockToken = namedtuple("MockToken", ["token", "expires_on", "value"])
+
+
+class MockKeyVaultSecret:
+    def __init__(self, value):
+        self.value = value
 
 
 class MockAzureCredential(AsyncTokenCredential):
     async def get_token(self, uri):
-        return MockToken("mock_token", 9999999999)
+        return MockToken("", 9999999999, "")
+
+    async def get_secret(self, secret_name):
+        return MockKeyVaultSecret("mysecret")
 
 
-@pytest.fixture
-def mock_openai_embedding(monkeypatch):
-    async def mock_acreate(*args, **kwargs):
-        if openai.api_type == "openai":
-            assert kwargs.get("deployment_id") is None
-        else:
-            assert kwargs.get("deployment_id") is not None
-        return {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
-
-    monkeypatch.setattr(openai.Embedding, "acreate", mock_acreate)
+class Caption:
+    def __init__(self, text, highlights=None, additional_properties=None):
+        self.text = text
+        self.highlights = highlights or []
+        self.additional_properties = additional_properties or {}
 
 
-@pytest.fixture
-def mock_openai_chatcompletion(monkeypatch):
-    class AsyncChatCompletionIterator:
-        def __init__(self, answer: str):
-            self.responses = [
-                {"object": "chat.completion.chunk", "choices": []},
-                {"object": "chat.completion.chunk", "choices": [{"delta": {"role": "assistant"}}]},
-            ]
-            # Split at << to simulate chunked responses
-            if answer.find("<<") > -1:
-                parts = answer.split("<<")
-                self.responses.append(
-                    {
-                        "object": "chat.completion.chunk",
-                        "choices": [{"delta": {"role": "assistant", "content": parts[0] + "<<"}}],
-                    }
-                )
-                self.responses.append(
-                    {
-                        "object": "chat.completion.chunk",
-                        "choices": [{"delta": {"role": "assistant", "content": parts[1]}}],
-                    }
-                )
-            else:
-                self.responses.append(
-                    {
-                        "object": "chat.completion.chunk",
-                        "choices": [{"delta": {"content": answer}}],
-                    }
-                )
+class AsyncPageIterator:
+    def __init__(self, data):
+        self.data = data
 
-        def __aiter__(self):
-            return self
+    def __aiter__(self):
+        return self
 
-        async def __anext__(self):
-            if self.responses:
-                return self.responses.pop(0)
-            else:
-                raise StopAsyncIteration
-
-    async def mock_acreate(*args, **kwargs):
-        if openai.api_type == "openai":
-            assert kwargs.get("deployment_id") is None
-        else:
-            assert kwargs.get("deployment_id") is not None
-        messages = kwargs["messages"]
-        if messages[-1]["content"] == "Generate search query for: What is the capital of France?":
-            answer = "capital of France"
-        else:
-            answer = "The capital of France is Paris. [Benefit_Options-2.pdf]."
-            if messages[0]["content"].find("Generate 3 very brief follow-up questions") > -1:
-                answer = "The capital of France is Paris. [Benefit_Options-2.pdf]. <<What is the capital of Spain?>>"
-        if "stream" in kwargs and kwargs["stream"] is True:
-            return AsyncChatCompletionIterator(answer)
-        else:
-            return openai.util.convert_to_openai_object(
-                {"object": "chat.completion", "choices": [{"message": {"role": "assistant", "content": answer}}]}
-            )
-
-    monkeypatch.setattr(openai.ChatCompletion, "acreate", mock_acreate)
+    async def __anext__(self):
+        if not self.data:
+            raise StopAsyncIteration
+        return self.data.pop(0)  # This should be a list of dictionaries.
 
 
-@pytest.fixture
-def mock_acs_search(monkeypatch):
-    class Caption:
-        def __init__(self, text):
-            self.text = text
-
-    class AsyncSearchResultsIterator:
-        def __init__(self):
-            self.num = 1
-
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            if self.num == 1:
-                self.num = 0
-                return {
+class AsyncSearchResultsIterator:
+    def __init__(self):
+        self.data = [
+            [
+                {
                     "sourcepage": "Benefit_Options-2.pdf",
                     "sourcefile": "Benefit_Options.pdf",
                     "content": "There is a whistleblower policy.",
@@ -126,32 +75,169 @@ def mock_acs_search(monkeypatch):
                     "@search.reranker_score": 3.4577205181121826,
                     "@search.highlights": None,
                     "@search.captions": [Caption("Caption: A whistleblower policy.")],
-                }
-            else:
-                raise StopAsyncIteration
+                },
+            ]
+        ]
 
-    async def mock_search(*args, **kwargs):
-        return AsyncSearchResultsIterator()
+    def __aiter__(self):
+        return self
 
-    monkeypatch.setattr(SearchClient, "search", mock_search)
+    async def __anext__(self):
+        if not self.data:
+            raise StopAsyncIteration
+        return AsyncPageIterator(self.data.pop(0))
+
+    def by_page(self):
+        return self
+
+
+async def mock_search(self, *args, **kwargs):
+    self.filter = kwargs.get("filter")
+    return AsyncSearchResultsIterator()
 
 
 @pytest.fixture
-def mock_acs_search_filter(monkeypatch):
-    class AsyncSearchResultsIterator:
-        def __init__(self):
-            self.num = 1
+def mock_get_secret(monkeypatch):
+    monkeypatch.setattr(SecretClient, "get_secret", MockAzureCredential().get_secret)
+
+
+@pytest.fixture
+def mock_openai_embedding(monkeypatch):
+    async def mock_acreate(*args, **kwargs):
+        return CreateEmbeddingResponse(
+            object="list",
+            data=[
+                Embedding(
+                    embedding=[
+                        0.0023064255,
+                        -0.009327292,
+                        -0.0028842222,
+                    ],
+                    index=0,
+                    object="embedding",
+                )
+            ],
+            model="text-embedding-ada-002",
+            usage=Usage(prompt_tokens=8, total_tokens=8),
+        )
+
+    def patch(openai_client):
+        monkeypatch.setattr(openai_client.embeddings, "create", mock_acreate)
+
+    return patch
+
+
+@pytest.fixture
+def mock_openai_chatcompletion(monkeypatch):
+    class AsyncChatCompletionIterator:
+        def __init__(self, answer: str):
+            chunk_id = "test-id"
+            model = "gpt-35-turbo"
+            self.responses = [
+                {"object": "chat.completion.chunk", "choices": [], "id": chunk_id, "model": model, "created": 1},
+                {
+                    "object": "chat.completion.chunk",
+                    "choices": [{"delta": {"role": "assistant"}, "index": 0, "finish_reason": None}],
+                    "id": chunk_id,
+                    "model": model,
+                    "created": 1,
+                },
+            ]
+            # Split at << to simulate chunked responses
+            if answer.find("<<") > -1:
+                parts = answer.split("<<")
+                self.responses.append(
+                    {
+                        "object": "chat.completion.chunk",
+                        "choices": [
+                            {
+                                "delta": {"role": "assistant", "content": parts[0] + "<<"},
+                                "index": 0,
+                                "finish_reason": None,
+                            }
+                        ],
+                        "id": chunk_id,
+                        "model": model,
+                        "created": 1,
+                    }
+                )
+                self.responses.append(
+                    {
+                        "object": "chat.completion.chunk",
+                        "choices": [
+                            {"delta": {"role": "assistant", "content": parts[1]}, "index": 0, "finish_reason": None}
+                        ],
+                        "id": chunk_id,
+                        "model": model,
+                        "created": 1,
+                    }
+                )
+                self.responses.append(
+                    {
+                        "object": "chat.completion.chunk",
+                        "choices": [{"delta": {"role": None, "content": None}, "index": 0, "finish_reason": "stop"}],
+                        "id": chunk_id,
+                        "model": model,
+                        "created": 1,
+                    }
+                )
+            else:
+                self.responses.append(
+                    {
+                        "object": "chat.completion.chunk",
+                        "choices": [{"delta": {"content": answer}, "index": 0, "finish_reason": None}],
+                        "id": chunk_id,
+                        "model": model,
+                        "created": 1,
+                    }
+                )
 
         def __aiter__(self):
             return self
 
         async def __anext__(self):
-            raise StopAsyncIteration
+            if self.responses:
+                return ChatCompletionChunk.model_validate(self.responses.pop(0))
+            else:
+                raise StopAsyncIteration
 
-    async def mock_search(self, *args, **kwargs):
-        self.filter = kwargs.get("filter")
-        return AsyncSearchResultsIterator()
+    async def mock_acreate(*args, **kwargs):
+        messages = kwargs["messages"]
+        if messages[-1]["content"] == "Generate search query for: What is the capital of France?":
+            answer = "capital of France"
+        else:
+            answer = "The capital of France is Paris. [Benefit_Options-2.pdf]."
+            if messages[0]["content"].find("Generate 3 very brief follow-up questions") > -1:
+                answer = "The capital of France is Paris. [Benefit_Options-2.pdf]. <<What is the capital of Spain?>>"
+        if "stream" in kwargs and kwargs["stream"] is True:
+            return AsyncChatCompletionIterator(answer)
+        else:
+            return ChatCompletion(
+                object="chat.completion",
+                choices=[
+                    Choice(
+                        message=ChatCompletionMessage(role="assistant", content=answer), finish_reason="stop", index=0
+                    )
+                ],
+                id="test-123",
+                created=0,
+                model="test-model",
+            )
 
+    def patch(openai_client):
+        monkeypatch.setattr(openai_client.chat.completions, "create", mock_acreate)
+
+    return patch
+
+
+@pytest.fixture
+def mock_acs_search(monkeypatch):
+    monkeypatch.setattr(SearchClient, "search", mock_search)
+    monkeypatch.setattr(SearchClient, "search", mock_search)
+
+
+@pytest.fixture
+def mock_acs_search_filter(monkeypatch):
     monkeypatch.setattr(SearchClient, "search", mock_search)
 
 
@@ -204,12 +290,15 @@ def mock_env(monkeypatch, request):
 
 
 @pytest_asyncio.fixture()
-async def client(monkeypatch, mock_env, mock_openai_chatcompletion, mock_openai_embedding, mock_acs_search, request):
+async def client(
+    monkeypatch, mock_env, mock_openai_chatcompletion, mock_openai_embedding, mock_acs_search, request, mock_get_secret
+):
     quart_app = app.create_app()
 
     async with quart_app.test_app() as test_app:
         quart_app.config.update({"TESTING": True})
-
+        mock_openai_chatcompletion(test_app.app.config[app.CONFIG_OPENAI_CLIENT])
+        mock_openai_embedding(test_app.app.config[app.CONFIG_OPENAI_CLIENT])
         yield test_app.test_client()
 
 
@@ -222,6 +311,7 @@ async def auth_client(
     mock_list_groups_success,
     mock_acs_search_filter,
     request,
+    mock_get_secret,
 ):
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT", "test-storage-account")
     monkeypatch.setenv("AZURE_STORAGE_CONTAINER", "test-storage-container")
@@ -237,6 +327,8 @@ async def auth_client(
 
         async with quart_app.test_app() as test_app:
             quart_app.config.update({"TESTING": True})
+            mock_openai_chatcompletion(test_app.app.config[app.CONFIG_OPENAI_CLIENT])
+            mock_openai_embedding(test_app.app.config[app.CONFIG_OPENAI_CLIENT])
             client = test_app.test_client()
             client.config = quart_app.config
 

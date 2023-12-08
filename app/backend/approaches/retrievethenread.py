@@ -1,9 +1,9 @@
 import os
 from typing import Any, AsyncGenerator, Optional, Union
 
-import openai
 from azure.search.documents.aio import SearchClient
-from azure.storage.blob import ContainerClient
+from azure.search.documents.models import VectorQuery
+from openai import AsyncOpenAI
 
 from approaches.approach import Approach, ThoughtStep
 from core.messagebuilder import MessageBuilder
@@ -43,24 +43,24 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
 
     def __init__(
         self,
+        *,
         search_client: SearchClient,
-        blob_container_client: ContainerClient,
-        openai_host: str,
-        chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
+        openai_client: AsyncOpenAI,
         chatgpt_model: str,
-        embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
+        chatgpt_deployment: Optional[str],  # Not needed for non-Azure OpenAI
         embedding_model: str,
+        embedding_deployment: Optional[str],  # Not needed for non-Azure OpenAI or for retrieval_mode="text"
         sourcepage_field: str,
         content_field: str,
         query_language: str,
         query_speller: str,
     ):
         self.search_client = search_client
-        self.blob_container_client = blob_container_client
-        self.openai_host = openai_host
         self.chatgpt_deployment = chatgpt_deployment
+        self.openai_client = openai_client
         self.chatgpt_model = chatgpt_model
         self.embedding_model = embedding_model
+        self.chatgpt_deployment = chatgpt_deployment
         self.embedding_deployment = embedding_deployment
         self.sourcepage_field = sourcepage_field
         self.content_field = content_field
@@ -79,14 +79,13 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         auth_claims = context.get("auth_claims", {})
         has_text = overrides.get("retrieval_mode") in ["text", "hybrid", None]
         has_vector = overrides.get("retrieval_mode") in ["vectors", "hybrid", None]
+        use_semantic_ranker = overrides.get("semantic_ranker") and has_text
 
         use_semantic_captions = True if overrides.get("semantic_captions") and has_text else False
         top = overrides.get("top", 3)
         filter = self.build_filter(overrides, auth_claims)
-        use_semantic_ranker = overrides.get("semantic_ranker") and has_text
-
-        # If retrieval mode includes vectors, compute an embeddings for the query
-        vectors = []
+        # If retrieval mode includes vectors, compute an embedding for the query
+        vectors: list[VectorQuery] = []
         if has_vector:
             vectors.append(await self.compute_text_embedding(q))
 
@@ -102,33 +101,27 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
         message_builder = MessageBuilder(template, model)
 
         # Process results
-        sources_content = "Sources:\n" + "\n".join(result.content or "" for result in results)
+        sources_content = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
 
         # Append user message
-        user_content = q + "\n" + sources_content
+        content = "\n".join(sources_content)
+        user_content = q + "\n" + f"Sources:\n {content}"
         message_builder.insert_message("user", user_content)
         message_builder.insert_message("assistant", self.answer)
         message_builder.insert_message("user", self.question)
 
-        messages = message_builder.messages
+        chat_completion = (
+            await self.openai_client.chat.completions.create(
+                # Azure Open AI takes the deployment name as the model name
+                model=self.chatgpt_deployment if self.chatgpt_deployment else self.chatgpt_model,
+                messages=message_builder.messages,
+                temperature=overrides.get("temperature") or 0.3,
+                max_tokens=1024,
+                n=1,
+            )
+        ).model_dump()
 
-        # Chat completion
-        deployment_id = self.chatgpt_deployment
-        temperature = overrides.get("temperature") or 0.3
-        chatgpt_args = {"deployment_id": deployment_id} if self.openai_host == "azure" else {}
-
-        chatgpt_args["model"] = self.chatgpt_model
-
-        chat_completion = await openai.ChatCompletion.acreate(
-            **chatgpt_args,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=1024,
-            n=1,
-        )
-
-        data_points = {"text": [result.content or "" for result in results]}
-
+        data_points = {"text": sources_content}
         extra_info = {
             "data_points": data_points,
             "thoughts": [
@@ -137,13 +130,13 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                     query_text,
                     {
                         "semanticCaptions": use_semantic_captions,
-                        "Model ID": deployment_id,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
-                ThoughtStep("Prompt", [str(message) for message in messages]),
+                ThoughtStep("Prompt", [str(message) for message in message_builder.messages]),
             ],
         }
-        chat_completion.choices[0]["context"] = extra_info
-        chat_completion.choices[0]["session_state"] = session_state
+
+        chat_completion["choices"][0]["context"] = extra_info
+        chat_completion["choices"][0]["session_state"] = session_state
         return chat_completion

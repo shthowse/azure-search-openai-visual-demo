@@ -336,9 +336,9 @@ module computerVisionKVSecret 'core/security/keyvault-secret.bicep' = if (useGPT
   name: 'keyvault-secret'
   scope: keyVaultResourceGroup
   params: {
-    keyVaultName: keyVault.outputs.name
+    keyVaultName: useGPT4V ? keyVault.outputs.name : ''
     name: computerVisionSecretName
-    secretValue: computerVision.outputs.id
+    secretValue: useGPT4V ? computerVision.outputs.id : ''
   }
 }
 

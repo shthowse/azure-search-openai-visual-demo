@@ -3,6 +3,8 @@ import os
 from typing import List, Optional
 
 from azure.search.documents.indexes.models import (
+    ExhaustiveKnnParameters,
+    ExhaustiveKnnVectorSearchAlgorithmConfiguration,
     HnswParameters,
     HnswVectorSearchAlgorithmConfiguration,
     PrioritizedFields,
@@ -15,10 +17,14 @@ from azure.search.documents.indexes.models import (
     SemanticSettings,
     SimpleField,
     VectorSearch,
+    VectorSearchAlgorithmKind,
+    VectorSearchAlgorithmMetric,
+    VectorSearchProfile,
+    VectorSearchVectorizer,
 )
 
 from .blobmanager import BlobManager
-from .embeddings import OpenAIEmbeddings
+from .embeddings import AzureOpenAIEmbeddingService, OpenAIEmbeddings
 from .listfilestrategy import File
 from .strategy import SearchInfo
 from .textsplitter import SplitPage
@@ -55,14 +61,15 @@ class SearchManager:
         self.embeddings = embeddings
         self.search_images = search_images
 
-    async def create_index(self):
+    async def create_index(self, vectorizers: VectorSearchVectorizer = []):
         if self.search_info.verbose:
             print(f"Ensuring search index {self.search_info.index_name} exists")
 
         async with self.search_info.create_search_index_client() as search_index_client:
             fields = [
-                SimpleField(name="id", type="Edm.String", key=True),
+                SearchField(name="id", type="Edm.String", key=True, sortable=True, filterable=True, facetable=True, analyzer_name="keyword"),              
                 SearchableField(name="content", type="Edm.String", analyzer_name=self.search_analyzer_name),
+                SearchableField(name="parent_id", type="Edm.String", filterable=True),
                 SearchField(
                     name="embedding",
                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
@@ -72,7 +79,7 @@ class SearchManager:
                     sortable=False,
                     facetable=False,
                     vector_search_dimensions=1536,
-                    vector_search_configuration="default",
+                    vector_search_profile="myHnswProfile",
                 ),
                 SimpleField(name="category", type="Edm.String", filterable=True, facetable=True),
                 SimpleField(name="sourcepage", type="Edm.String", filterable=True, facetable=True),
@@ -100,7 +107,7 @@ class SearchManager:
                         sortable=False,
                         facetable=False,
                         vector_search_dimensions=1024,
-                        vector_search_configuration="default",
+                        vector_search_configuration="myHnsw",
                     ),
                 )
 
@@ -118,11 +125,38 @@ class SearchManager:
                     ]
                 ),
                 vector_search=VectorSearch(
-                    algorithm_configurations=[
+                    algorithms=[
                         HnswVectorSearchAlgorithmConfiguration(
-                            name="default", kind="hnsw", hnsw_parameters=HnswParameters(metric="cosine")
-                        )
-                    ]
+                            name="myHnsw",
+                            kind=VectorSearchAlgorithmKind.HNSW,
+                            parameters=HnswParameters(
+                                m=4,
+                                ef_construction=400,
+                                ef_search=500,
+                                metric=VectorSearchAlgorithmMetric.COSINE,
+                            ),
+                        ),
+                        ExhaustiveKnnVectorSearchAlgorithmConfiguration(
+                            name="myExhaustiveKnn",
+                            kind=VectorSearchAlgorithmKind.EXHAUSTIVE_KNN,
+                            parameters=ExhaustiveKnnParameters(
+                                metric=VectorSearchAlgorithmMetric.COSINE,
+                            ),
+                        ),
+                    ],
+                    profiles=[
+                        VectorSearchProfile(
+                            name="myHnswProfile",
+                            algorithm="myHnsw",
+                            vectorizer="myOpenAI",
+                        ),
+                        VectorSearchProfile(
+                            name="myExhaustiveKnnProfile",
+                            algorithm="myExhaustiveKnn",
+                            vectorizer="myOpenAI",
+                        ),
+                    ],
+                    vectorizers=vectorizers,
                 ),
             )
             if self.search_info.index_name not in [name async for name in search_index_client.list_index_names()]:

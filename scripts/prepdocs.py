@@ -15,6 +15,10 @@ from prepdocslib.embeddings import (
     OpenAIEmbeddingService,
 )
 from prepdocslib.filestrategy import DocumentAction, FileStrategy
+from prepdocslib.integratedvectorizerstrategy import (
+    DocumentAction,
+    IntegratedVectorizerStrategy,
+)
 from prepdocslib.listfilestrategy import (
     ADLSGen2ListFileStrategy,
     ListFileStrategy,
@@ -137,6 +141,68 @@ async def setup_file_strategy(credential: AsyncTokenCredential, args: Any) -> Fi
         document_action=document_action,
         embeddings=embeddings,
         image_embeddings=image_embeddings,
+        search_analyzer_name=args.searchanalyzername,
+        use_acls=args.useacls,
+        category=args.category,
+    )
+
+
+async def setup_intvectorizer_strategy(credential: AsyncTokenCredential, args: Any) -> FileStrategy:
+    storage_creds = credential if is_key_empty(args.storagekey) else args.storagekey
+    blob_manager = BlobManager(
+        endpoint=f"https://{args.storageaccount}.blob.core.windows.net",
+        container=args.container,
+        credential=storage_creds,
+        store_page_images=args.searchimages,
+        verbose=args.verbose,
+    )
+
+    use_vectors = not args.novectors
+    embeddings: Optional[OpenAIEmbeddings] = None
+    if use_vectors and args.openaihost != "openai":
+        azure_open_ai_credential: Union[AsyncTokenCredential, AzureKeyCredential] = (
+            credential if is_key_empty(args.openaikey) else AzureKeyCredential(args.openaikey)
+        )
+        embeddings = AzureOpenAIEmbeddingService(
+            open_ai_service=args.openaiservice,
+            open_ai_deployment=args.openaideployment,
+            open_ai_model_name=args.openaimodelname,
+            credential=azure_open_ai_credential,
+            disable_batch=args.disablebatchvectors,
+            verbose=args.verbose,
+        )
+
+    image_embeddings: Optional[ImageEmbeddings] = None
+
+    if args.searchimages:
+        key = await get_vision_key(credential)
+        image_embeddings = (
+            ImageEmbeddings(credential=key, endpoint=args.visionendpoint, verbose=args.verbose) if key else None
+        )
+
+    print("Processing files...")
+    list_file_strategy: ListFileStrategy
+    if args.datalakestorageaccount:
+        adls_gen2_creds = credential if is_key_empty(args.datalakekey) else args.datalakekey
+        print(f"Using Data Lake Gen2 Storage Account {args.datalakestorageaccount}")
+        list_file_strategy = ADLSGen2ListFileStrategy(
+            data_lake_storage_account=args.datalakestorageaccount,
+            data_lake_filesystem=args.datalakefilesystem,
+            data_lake_path=args.datalakepath,
+            credential=adls_gen2_creds,
+            verbose=args.verbose,
+        )
+    else:
+        print(f"Using local files in {args.files}")
+        list_file_strategy = LocalListFileStrategy(path_pattern=args.files, verbose=args.verbose)
+
+        document_action = DocumentAction.Add
+
+    return IntegratedVectorizerStrategy(
+        list_file_strategy=list_file_strategy,
+        blob_manager=blob_manager,
+        document_action=document_action,
+        embeddings=embeddings,
         search_analyzer_name=args.searchanalyzername,
         use_acls=args.useacls,
         category=args.category,
@@ -306,6 +372,6 @@ if __name__ == "__main__":
     )
 
     loop = asyncio.get_event_loop()
-    file_strategy = loop.run_until_complete(setup_file_strategy(azd_credential, args))
+    file_strategy = loop.run_until_complete(setup_intvectorizer_strategy(azd_credential, args))
     loop.run_until_complete(main(file_strategy, azd_credential, args))
     loop.close()

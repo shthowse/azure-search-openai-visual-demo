@@ -282,8 +282,8 @@ module formRecognizer 'core/ai/cognitiveservices.bicep' = {
   }
 }
 
-module computerVision 'core/ai/cognitiveservices.bicep' = if (useGPT4V) {
-  name: 'computerVision'
+module computerVision 'core/ai/cognitiveservices.bicep' = if (useGPT4V == true) {
+  name: 'computer-Vision'
   scope: computerVisionResourceGroup
   params: {
     name: computerVisionName
@@ -297,12 +297,11 @@ module computerVision 'core/ai/cognitiveservices.bicep' = if (useGPT4V) {
 }
 
 
-module keyvault 'core/security/key-vault.bicep' = {
+module keyvault 'core/security/key-vault.bicep' = if (useGPT4V == true) {
   scope: computerVisionResourceGroup
   name: 'keyvault'
   dependsOn:[
-    computerVision
-    backend
+    computerVision, backend
   ]
   params: {
     name: keyVaultName 

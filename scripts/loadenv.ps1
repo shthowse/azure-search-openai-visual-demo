@@ -7,7 +7,7 @@ foreach ($line in (& azd env get-values)) {
     }
 }
 
-$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+$pythonCmd = Get-Command py -ErrorAction SilentlyContinue
 if (-not $pythonCmd) {
   # fallback to python3 if python not found
   $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue

@@ -6,7 +6,13 @@ from typing import List, Optional, Union
 
 import fitz  # type: ignore
 from azure.core.credentials_async import AsyncTokenCredential
-from azure.storage.blob import BlobSasPermissions, UserDelegationKey, generate_blob_sas, generate_container_sas
+from azure.storage.blob import (
+    BlobSasPermissions,
+    ContainerSasPermissions,
+    UserDelegationKey,
+    generate_blob_sas,
+    generate_container_sas,
+)
 from azure.storage.blob.aio import BlobServiceClient, ContainerClient
 from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader
@@ -65,13 +71,13 @@ class BlobManager:
                     account_name=service_client.account_name,
                     container_name=self.container,
                     user_delegation_key=user_delegation_key,
-                    permission=BlobSasPermissions(read=True),
+                    permission=ContainerSasPermissions(read=True, list=True),
                     expiry=delegation_key_expiry_time,
                     start=delegation_key_start_time,
                 )
                 print(sas_token)
                 print(service_client.url)
-            return f"ContainerSharedAccessUri=https://stl5kzdk2in3t4w.blob.core.windows.net/content?sp=rl&st=2023-12-07T02:43:43Z&se=2023-12-07T10:43:43Z&skoid=0a6c3b2c-cf52-4d0c-a5f7-f51d31b71004&sktid=72f988bf-86f1-41af-91ab-2d7cd011db47&skt=2023-12-07T02:43:43Z&ske=2023-12-07T10:43:43Z&sks=b&skv=2022-11-02&spr=https&sv=2022-11-02&sr=c&sig=qkezDEz%2B9OrxJoH%2Frce33PUgJpZSkfzS4yQDAweZUp8%3D"
+            return f"ContainerSharedAccessUri={service_client.url}{self.container}?{sas_token}"
 
     async def upload_pdf_blob_images(
         self, service_client: BlobServiceClient, container_client: ContainerClient, file: File

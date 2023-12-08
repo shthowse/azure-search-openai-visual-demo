@@ -22,6 +22,7 @@ from azure.search.documents.indexes.models import (
     SearchIndexer,
     SearchIndexerDataContainer,
     SearchIndexerDataSourceConnection,
+    SearchIndexerDataUserAssignedIdentity,
     SearchIndexerIndexProjections,
     SearchIndexerIndexProjectionSelector,
     SearchIndexerIndexProjectionsParameters,
@@ -59,6 +60,8 @@ class IntegratedVectorizerStrategy(Strategy):
         list_file_strategy: ListFileStrategy,
         blob_manager: BlobManager,
         embeddings: AzureOpenAIEmbeddingService,
+        subscriptionId: str,
+        searchServiceUserAssginedId: str,
         document_action: DocumentAction = DocumentAction.Add,
         search_analyzer_name: Optional[str] = None,
         use_acls: bool = False,
@@ -68,6 +71,8 @@ class IntegratedVectorizerStrategy(Strategy):
         self.blob_manager = blob_manager
         self.document_action = document_action
         self.embeddings = embeddings
+        self.subscriptionId = subscriptionId
+        self.search_user_assigned_identity = searchServiceUserAssginedId
         self.search_analyzer_name = search_analyzer_name
         self.use_acls = use_acls
         self.category = category
@@ -94,7 +99,9 @@ class IntegratedVectorizerStrategy(Strategy):
             context="/document/pages/*",
             resource_uri=f"https://{self.embeddings.open_ai_service}.openai.azure.com",
             deployment_id=self.embeddings.open_ai_deployment,
-            api_key=openai_key,
+            auth_identity=SearchIndexerDataUserAssignedIdentity(
+                user_assigned_identity=f"/subscriptions/{self.subscriptionId}/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{self.search_user_assigned_identity}"
+            ),
             inputs=[
                 InputFieldMappingEntry(name="text", source="/document/pages/*"),
             ],
@@ -136,7 +143,6 @@ class IntegratedVectorizerStrategy(Strategy):
             self.embeddings,
             search_images=False,
         )
-        openai_cred = await self.embeddings.wrap_credential()
         await search_manager.create_index(
             [
                 AzureOpenAIVectorizer(
@@ -145,7 +151,9 @@ class IntegratedVectorizerStrategy(Strategy):
                     azure_open_ai_parameters=AzureOpenAIParameters(
                         resource_uri=f"https://{self.embeddings.open_ai_service}.openai.azure.com",
                         deployment_id=self.embeddings.open_ai_deployment,
-                        api_key=openai_cred,
+                        auth_identity=SearchIndexerDataUserAssignedIdentity(
+                            user_assigned_identity=f"/subscriptions/{self.subscriptionId}/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{self.search_user_assigned_identity}"
+                        ),
                     ),
                 ),
             ]
@@ -154,6 +162,7 @@ class IntegratedVectorizerStrategy(Strategy):
         # create indexer client
         ds_client = search_info.create_search_indexer_client()
         ds_container = SearchIndexerDataContainer(name=self.blob_manager.container)
+        print(await self.blob_manager.get_blob_sas_365days())
         data_source_connection = SearchIndexerDataSourceConnection(
             name=f"{search_info.index_name}-blob",
             type="azureblob",
@@ -164,24 +173,6 @@ class IntegratedVectorizerStrategy(Strategy):
 
         embedding_skillset = await self.createEmbeddingSkill(search_info.index_name)
         await ds_client.create_or_update_skillset(embedding_skillset)
-
-        # Create an indexer
-        indexer_name = f"{search_info.index_name}-indexer"
-
-        indexer = SearchIndexer(
-            name=indexer_name,
-            description="Indexer to index documents and generate embeddings",
-            skillset_name=embedding_skillset.name,
-            target_index_name=search_info.index_name,
-            data_source_name=data_source.name,
-            # Map the metadata_storage_name field to the title field in the index to display the PDF title in the search results
-            field_mappings=[FieldMapping(source_field_name="metadata_storage_name", target_field_name="title")],
-        )
-
-        indexer_result = await ds_client.create_or_update_indexer(indexer)
-
-        # Run the indexer
-        await ds_client.run_indexer(indexer_name)
 
     async def run(self, search_info: SearchInfo):
         if self.document_action == DocumentAction.Add:
@@ -208,9 +199,9 @@ class IntegratedVectorizerStrategy(Strategy):
 
         indexer_client = search_info.create_search_indexer_client()
 
-        indexer_result = indexer_client.create_or_update_indexer(indexer)
+        indexer_result = await indexer_client.create_or_update_indexer(indexer)
 
         print(indexer_result)
 
         # Run the indexer
-        indexer_client.run_indexer(indexer_name)
+        await indexer_client.run_indexer(indexer_name)

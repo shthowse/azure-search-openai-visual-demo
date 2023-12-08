@@ -20,7 +20,7 @@ from azure.search.documents.indexes.models import (
     VectorSearchAlgorithmKind,
     VectorSearchAlgorithmMetric,
     VectorSearchProfile,
-    VectorSearchVectorizer
+    VectorSearchVectorizer,
 )
 
 from .blobmanager import BlobManager
@@ -67,7 +67,15 @@ class SearchManager:
 
         async with self.search_info.create_search_index_client() as search_index_client:
             fields = [
-                SearchField(name="id", type="Edm.String", key=True, sortable=True, filterable=True, facetable=True, analyzer_name="keyword"),              
+                SearchField(
+                    name="id",
+                    type="Edm.String",
+                    key=True,
+                    sortable=True,
+                    filterable=True,
+                    facetable=True,
+                    analyzer_name="keyword",
+                ),
                 SearchableField(name="content", type="Edm.String", analyzer_name=self.search_analyzer_name),
                 SearchableField(name="parent_id", type="Edm.String", filterable=True),
                 SearchField(
@@ -133,17 +141,15 @@ class SearchManager:
                         )
                     ],
                     profiles=[
-                        VectorSearchProfile(
-                            name="embedding_config",
-                            algorithm="hnsw_config",
-                        ),
+                        VectorSearchProfile(name="embedding_config", algorithm="hnsw_config", vectorizer="myOpenAI"),
                     ],
+                    vectorizers=vectorizers,
                 ),
             )
             if self.search_info.index_name not in [name async for name in search_index_client.list_index_names()]:
                 if self.search_info.verbose:
                     print(f"Creating {self.search_info.index_name} search index")
-                await search_index_client.create_index(index)
+                await search_index_client.create_or_update_index(index)
             else:
                 if self.search_info.verbose:
                     print(f"Search index {self.search_info.index_name} already exists")

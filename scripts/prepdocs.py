@@ -203,6 +203,8 @@ async def setup_intvectorizer_strategy(credential: AsyncTokenCredential, args: A
         blob_manager=blob_manager,
         document_action=document_action,
         embeddings=embeddings,
+        subscriptionId=args.subscriptionId,
+        searchServiceUserAssginedId=args.searchserviceassignedid,
         search_analyzer_name=args.searchanalyzername,
         use_acls=args.useacls,
         category=args.category,
@@ -269,8 +271,17 @@ if __name__ == "__main__":
         "--tenantid", required=False, help="Optional. Use this to define the Azure directory where to authenticate)"
     )
     parser.add_argument(
+        "--subscriptionId",
+        required=False,
+        help="Optional. Use this to define the Azure directory where to authenticate)",
+    )
+    parser.add_argument(
         "--searchservice",
         help="Name of the Azure AI Search service where content should be indexed (must exist already)",
+    )
+    parser.add_argument(
+        "--searchserviceassignedid",
+        help="Search service user assigned Identity to authenticate (must exist already)",
     )
     parser.add_argument(
         "--index",

@@ -76,9 +76,9 @@ param chatGptModelVersion string = '0613'
 param embeddingDeploymentName string // Set in main.parameters.json
 param embeddingDeploymentCapacity int = 30
 param embeddingModelName string = 'text-embedding-ada-002'
-param gpt4vModelName string = 'gpt-4v'
+param gpt4vModelName string = 'gpt-4'
 param gpt4vDeploymentName string = 'gpt-4v'
-param gpt4vModelVersion string = '1015'
+param gpt4vModelVersion string = 'vision-preview'
 
 // Used for the optional login and document level access control system
 param useAuthentication bool = false

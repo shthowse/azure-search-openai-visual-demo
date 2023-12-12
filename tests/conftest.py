@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-from collections import namedtuple
 from unittest import mock
 
 import aiohttp
@@ -10,15 +9,10 @@ import azure.storage.filedatalake.aio
 import msal
 import pytest
 import pytest_asyncio
-
 from azure.keyvault.secrets.aio import SecretClient
 from azure.search.documents.aio import SearchClient
-from azure.core.pipeline.transport import (
-    AioHttpTransportResponse,
-    AsyncHttpTransport,
-    HttpRequest,
-)
 from azure.storage.blob.aio import ContainerClient
+from mocks import MockAzureCredential, MockBlobClient, MockKeyVaultSecretClient
 from openai.types import CreateEmbeddingResponse, Embedding
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion import (
@@ -29,7 +23,7 @@ from openai.types.create_embedding_response import Usage
 
 import app
 from core.authentication import AuthenticationHelper
-from mocks import MockBlobClient, MockAzureCredential, MockKeyVaultSecretClient
+
 
 class Caption:
     def __init__(self, text, highlights=None, additional_properties=None):
@@ -80,6 +74,7 @@ class AsyncSearchResultsIterator:
 
     def by_page(self):
         return self
+
 
 async def mock_search(self, *args, **kwargs):
     self.filter = kwargs.get("filter")
@@ -230,6 +225,7 @@ def mock_acs_search(monkeypatch):
 def mock_acs_search_filter(monkeypatch):
     monkeypatch.setattr(SearchClient, "search", mock_search)
 
+
 @pytest.fixture
 def mock_blob_container_client(monkeypatch):
     monkeypatch.setattr(ContainerClient, "get_blob_client", lambda *args, **kwargs: MockBlobClient())
@@ -289,7 +285,12 @@ def mock_env(monkeypatch, request, mock_get_secret):
 
 @pytest_asyncio.fixture()
 async def client(
-    monkeypatch, mock_env, mock_openai_chatcompletion, mock_openai_embedding, mock_acs_search, request, mock_blob_container_client
+    monkeypatch,
+    mock_env,
+    mock_openai_chatcompletion,
+    mock_openai_embedding,
+    mock_acs_search,
+    mock_blob_container_client,
 ):
     quart_app = app.create_app()
 

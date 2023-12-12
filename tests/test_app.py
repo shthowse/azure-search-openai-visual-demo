@@ -584,7 +584,6 @@ async def test_chat_stream_followup(client, snapshot):
     snapshot.assert_match(result, "result.jsonlines")
 
 
-
 @pytest.mark.asyncio
 async def test_chat_vision(client, snapshot):
     response = await client.post(

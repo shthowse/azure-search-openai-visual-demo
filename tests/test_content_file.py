@@ -1,5 +1,4 @@
 import os
-from collections import namedtuple
 
 import aiohttp
 import pytest
@@ -10,9 +9,10 @@ from azure.core.pipeline.transport import (
     HttpRequest,
 )
 from azure.storage.blob.aio import BlobServiceClient
+from mocks import MockAzureCredential
 
 import app
-from mocks import MockAzureCredential
+
 
 @pytest.mark.asyncio
 async def test_content_file(monkeypatch, mock_env):

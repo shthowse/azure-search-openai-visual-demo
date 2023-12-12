@@ -584,6 +584,58 @@ async def test_chat_stream_followup(client, snapshot):
     snapshot.assert_match(result, "result.jsonlines")
 
 
+
+@pytest.mark.asyncio
+async def test_chat_vision(client, snapshot):
+    response = await client.post(
+        "/chat",
+        json={
+            "stream": True,
+            "messages": [{"content": "Are interest rates high?", "role": "user"}],
+            "context": {
+                "overrides": {"use_gpt4v": True},
+            },
+        },
+    )
+    assert response.status_code == 200
+    result = await response.get_data()
+    snapshot.assert_match(result, "result.jsonlines")
+
+
+@pytest.mark.asyncio
+async def test_chat_vision_vectors(client, snapshot):
+    response = await client.post(
+        "/chat",
+        json={
+            "stream": True,
+            "messages": [{"content": "Are interest rates high?", "role": "user"}],
+            "context": {
+                "overrides": {"use_gpt4v": True, "retrieval_mode": "vectors"},
+            },
+        },
+    )
+    assert response.status_code == 200
+    result = await response.get_data()
+    snapshot.assert_match(result, "result.jsonlines")
+
+
+@pytest.mark.asyncio
+async def test_ask_vision(client, snapshot):
+    response = await client.post(
+        "/ask",
+        json={
+            "stream": True,
+            "messages": [{"content": "Are interest rates high?", "role": "user"}],
+            "context": {
+                "overrides": {"use_gpt4v": True},
+            },
+        },
+    )
+    assert response.status_code == 200
+    result = await response.get_data()
+    snapshot.assert_match(result, "result.jsonlines")
+
+
 @pytest.mark.asyncio
 async def test_format_as_ndjson():
     async def gen():

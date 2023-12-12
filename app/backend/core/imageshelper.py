@@ -20,7 +20,7 @@ async def download_blob_as_base64(blob_container_client: ContainerClient, file_p
     base_name, _ = os.path.splitext(file_path)
     blob = await blob_container_client.get_blob_client(base_name + ".png").download_blob()
 
-    if not blob.properties or not blob.properties.has_key("content_settings"):
+    if not blob.properties:
         return None
     img = base64.b64encode(await blob.readall()).decode("utf-8")
     return f"data:image/png;base64,{img}"

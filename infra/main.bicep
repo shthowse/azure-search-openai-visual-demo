@@ -323,7 +323,7 @@ module keyVault 'core/security/keyvault.bicep' = if (useGPT4V) {
   }
 }
 
-module webKVAccess './core/security/keyvault-access.bicep' = if (useGPT4V) {
+module webKVAccess 'core/security/keyvault-access.bicep' = if (useGPT4V) {
   name: 'web-keyvault-access'
   scope: keyVaultResourceGroup
   params: {
@@ -332,16 +332,16 @@ module webKVAccess './core/security/keyvault-access.bicep' = if (useGPT4V) {
   }
 }
 
-module computerVisionKVSecret 'core/security/keyvault-secret.bicep' = if (useGPT4V) {
-  name: 'keyvault-secret'
+module secrets 'secrets.bicep' = if (useGPT4V) {
+  name: 'secrets'
   scope: keyVaultResourceGroup
   params: {
-    keyVaultName: useGPT4V ? keyVault.outputs.name : ''
-    name: computerVisionSecretName
-    secretValue: useGPT4V ? computerVision.outputs.id : ''
+    keyVaultName: keyVaultName
+    storeComputerVisionSecret: useGPT4V
+    computerVisionId: computerVision.outputs.id
+    computerVisionSecretName: computerVisionSecretName
   }
 }
-
 
 module searchService 'core/search/search-services.bicep' = {
   name: 'search-service'

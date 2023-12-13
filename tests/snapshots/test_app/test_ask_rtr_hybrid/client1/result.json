@@ -11,7 +11,7 @@
                     {
                         "description": "What is the capital of France?",
                         "props": {
-                            "semanticCaptions": false
+                            "use_semantic_captions": false
                         },
                         "title": "Search Query"
                     },

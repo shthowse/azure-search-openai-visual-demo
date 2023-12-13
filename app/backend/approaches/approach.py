@@ -33,8 +33,8 @@ class Document:
         return {
             "id": self.id,
             "content": self.content,
-            "embedding": Document.trim_embeddings(self.embedding),
-            "imageEmbedding": Document.trim_embeddings(self.image_embedding),
+            "embedding": Document.trim_embedding(self.embedding),
+            "imageEmbedding": Document.trim_embedding(self.image_embedding),
             "category": self.category,
             "sourcepage": self.sourcepage,
             "sourcefile": self.sourcefile,
@@ -53,7 +53,8 @@ class Document:
         }
 
     @classmethod
-    def trim_embeddings(cls, embedding: Optional[List[float]]) -> Optional[str]:
+    def trim_embedding(cls, embedding: Optional[List[float]]) -> Optional[str]:
+        """Returns a trimmed list of floats from the vector embedding."""
         if embedding:
             if len(embedding) > 2:
                 # Format the embedding list to show the first 2 items followed by the count of the remaining items."""
@@ -190,8 +191,9 @@ class Approach:
         data = {"text": q}
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(url=endpoint, params=params, headers=headers, json=data) as response:
-                response.raise_for_status()
+            async with session.post(
+                url=endpoint, params=params, headers=headers, json=data, raise_for_status=True
+            ) as response:
                 json = await response.json()
                 image_query_vector = json["vector"]
         return RawVectorQuery(vector=image_query_vector, k=50, fields="imageEmbedding")

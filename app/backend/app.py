@@ -156,9 +156,9 @@ async def format_as_ndjson(r: AsyncGenerator[dict, None]) -> AsyncGenerator[str,
     try:
         async for event in r:
             yield json.dumps(event, ensure_ascii=False, cls=JSONEncoder) + "\n"
-    except Exception as e:
-        logging.exception("Exception while generating response stream: %s", e)
-        yield json.dumps(error_dict(e))
+    except Exception as error:
+        logging.exception("Exception while generating response stream: %s", error)
+        yield json.dumps(error_dict(error))
 
 
 @bp.route("/chat", methods=["POST"])

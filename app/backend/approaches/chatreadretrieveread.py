@@ -181,7 +181,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
                 ThoughtStep(
                     "Generated search query",
                     query_text,
-                    {"semanticCaptions": use_semantic_captions, "has_vector": has_vector},
+                    {"use_semantic_captions": use_semantic_captions, "has_vector": has_vector},
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
                 ThoughtStep("Prompt", [str(message) for message in messages]),

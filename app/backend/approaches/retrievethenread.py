@@ -129,7 +129,7 @@ info4.pdf: In-network institutions include Overlake, Swedish and others in the r
                     "Search Query",
                     query_text,
                     {
-                        "semanticCaptions": use_semantic_captions,
+                        "use_semantic_captions": use_semantic_captions,
                     },
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),

@@ -9,9 +9,10 @@ from azure.core.pipeline.transport import (
     HttpRequest,
 )
 from azure.storage.blob.aio import BlobServiceClient
-from mocks import MockAzureCredential
 
 import app
+
+from .mocks import MockAzureCredential
 
 
 @pytest.mark.asyncio

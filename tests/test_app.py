@@ -589,16 +589,19 @@ async def test_chat_vision(client, snapshot):
     response = await client.post(
         "/chat",
         json={
-            "stream": True,
             "messages": [{"content": "Are interest rates high?", "role": "user"}],
             "context": {
-                "overrides": {"use_gpt4v": True},
+                "overrides": {
+                    "use_gpt4v": True,
+                    "gpt4v_input": "textAndImages",
+                    "vector_fields": ["embedding", "imageEmbedding"],
+                },
             },
         },
     )
     assert response.status_code == 200
-    result = await response.get_data()
-    snapshot.assert_match(result, "result.jsonlines")
+    result = await response.get_json()
+    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
 
 @pytest.mark.asyncio
@@ -606,16 +609,20 @@ async def test_chat_vision_vectors(client, snapshot):
     response = await client.post(
         "/chat",
         json={
-            "stream": True,
             "messages": [{"content": "Are interest rates high?", "role": "user"}],
             "context": {
-                "overrides": {"use_gpt4v": True, "retrieval_mode": "vectors"},
+                "overrides": {
+                    "use_gpt4v": True,
+                    "gpt4v_input": "textAndImages",
+                    "vector_fields": ["embedding", "imageEmbedding"],
+                    "retrieval_mode": "vectors",
+                },
             },
         },
     )
     assert response.status_code == 200
-    result = await response.get_data()
-    snapshot.assert_match(result, "result.jsonlines")
+    result = await response.get_json()
+    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
 
 @pytest.mark.asyncio
@@ -623,16 +630,19 @@ async def test_ask_vision(client, snapshot):
     response = await client.post(
         "/ask",
         json={
-            "stream": True,
             "messages": [{"content": "Are interest rates high?", "role": "user"}],
             "context": {
-                "overrides": {"use_gpt4v": True},
+                "overrides": {
+                    "use_gpt4v": True,
+                    "gpt4v_input": "textAndImages",
+                    "vector_fields": ["embedding", "imageEmbedding"],
+                },
             },
         },
     )
     assert response.status_code == 200
-    result = await response.get_data()
-    snapshot.assert_match(result, "result.jsonlines")
+    result = await response.get_json()
+    snapshot.assert_match(json.dumps(result, indent=4), "result.json")
 
 
 @pytest.mark.asyncio

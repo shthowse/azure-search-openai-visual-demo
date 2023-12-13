@@ -89,7 +89,7 @@ class RetrieveThenReadVisionApproach(Approach):
         filter = self.build_filter(overrides, auth_claims)
         use_semantic_ranker = overrides.get("semantic_ranker") and has_text
 
-        # If retrieval mode includes vectors, compute an embeddings for the query
+        # If retrieval mode includes vectors, compute an embedding for the query
 
         vectors = []
         if has_vector:
@@ -151,7 +151,7 @@ class RetrieveThenReadVisionApproach(Approach):
                 ThoughtStep(
                     "Search Query",
                     query_text,
-                    {"semanticCaptions": use_semantic_captions, "vector_fields": vector_fields},
+                    {"use_semantic_captions": use_semantic_captions, "vector_fields": vector_fields},
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
                 ThoughtStep("Prompt", [str(message) for message in message_builder.messages]),

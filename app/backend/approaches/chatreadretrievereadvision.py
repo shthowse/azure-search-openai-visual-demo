@@ -117,7 +117,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
 
         # STEP 2: Retrieve relevant documents from the search index with the GPT optimized query
 
-        # If retrieval mode includes vectors, compute an embeddings for the query
+        # If retrieval mode includes vectors, compute an embedding for the query
         vectors = []
         if has_vector:
             for field in vector_fields:
@@ -154,10 +154,9 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
             user_content.append({"text": "\n\nSources:\n" + content, "type": "text"})
         if include_gtpV_images:
             for result in results:
-                if result.sourcepage:
-                    url = await fetch_image(self.blob_container_client, result)
-                    if url:
-                        image_list.append({"image_url": url, "type": "image_url"})
+                url = await fetch_image(self.blob_container_client, result)
+                if url:
+                    image_list.append({"image_url": url, "type": "image_url"})
             user_content.extend(image_list)
 
         messages = self.get_messages_from_history(
@@ -183,7 +182,7 @@ class ChatReadRetrieveReadVisionApproach(ChatApproach):
                 ThoughtStep(
                     "Generated search query",
                     query_text,
-                    {"semanticCaptions": use_semantic_captions, "vector_fields": vector_fields},
+                    {"use_semantic_captions": use_semantic_captions, "vector_fields": vector_fields},
                 ),
                 ThoughtStep("Results", [result.serialize_for_results() for result in results]),
                 ThoughtStep("Prompt", [str(message) for message in messages]),

@@ -12,7 +12,6 @@ import pytest_asyncio
 from azure.keyvault.secrets.aio import SecretClient
 from azure.search.documents.aio import SearchClient
 from azure.storage.blob.aio import ContainerClient
-from mocks import MockAzureCredential, MockBlobClient, MockKeyVaultSecretClient
 from openai.types import CreateEmbeddingResponse, Embedding
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion import (
@@ -24,66 +23,35 @@ from openai.types.create_embedding_response import Usage
 import app
 from core.authentication import AuthenticationHelper
 
-
-class Caption:
-    def __init__(self, text, highlights=None, additional_properties=None):
-        self.text = text
-        self.highlights = highlights or []
-        self.additional_properties = additional_properties or {}
-
-
-class AsyncPageIterator:
-    def __init__(self, data):
-        self.data = data
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if not self.data:
-            raise StopAsyncIteration
-        return self.data.pop(0)  # This should be a list of dictionaries.
-
-
-class AsyncSearchResultsIterator:
-    def __init__(self):
-        self.data = [
-            [
-                {
-                    "sourcepage": "Benefit_Options-2.pdf",
-                    "sourcefile": "Benefit_Options.pdf",
-                    "content": "There is a whistleblower policy.",
-                    "embeddings": [],
-                    "category": None,
-                    "id": "file-Benefit_Options_pdf-42656E656669745F4F7074696F6E732E706466-page-2",
-                    "@search.score": 0.03279569745063782,
-                    "@search.reranker_score": 3.4577205181121826,
-                    "@search.highlights": None,
-                    "@search.captions": [Caption("Caption: A whistleblower policy.")],
-                },
-            ]
-        ]
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if not self.data:
-            raise StopAsyncIteration
-        return AsyncPageIterator(self.data.pop(0))
-
-    def by_page(self):
-        return self
+from .mocks import (
+    MockAsyncSearchResultsIterator,
+    MockAzureCredential,
+    MockBlobClient,
+    MockKeyVaultSecretClient,
+    MockResponse,
+    mock_computervision_response,
+)
 
 
 async def mock_search(self, *args, **kwargs):
     self.filter = kwargs.get("filter")
-    return AsyncSearchResultsIterator()
+    return MockAsyncSearchResultsIterator(kwargs.get("search_text"), kwargs.get("vectors"))
 
 
 @pytest.fixture
 def mock_get_secret(monkeypatch):
     monkeypatch.setattr(SecretClient, "get_secret", MockKeyVaultSecretClient().get_secret)
+
+
+@pytest.fixture
+def mock_compute_embeddings_call(monkeypatch):
+    def mock_post(*args, **kwargs):
+        if kwargs.get("url").endswith("computervision/retrieval:vectorizeText"):
+            return mock_computervision_response()
+        else:
+            raise Exception("Unexpected URL for mock call to ClientSession.post()")
+
+    monkeypatch.setattr(aiohttp.ClientSession, "post", mock_post)
 
 
 @pytest.fixture
@@ -188,8 +156,13 @@ def mock_openai_chatcompletion(monkeypatch):
 
     async def mock_acreate(*args, **kwargs):
         messages = kwargs["messages"]
-        if messages[-1]["content"] == "Generate search query for: What is the capital of France?":
+        last_question = messages[-1]["content"]
+        if last_question == "Generate search query for: What is the capital of France?":
             answer = "capital of France"
+        elif last_question == "Generate search query for: Are interest rates high?":
+            answer = "interest rates"
+        elif isinstance(last_question, list) and last_question[2].get("image_url"):
+            answer = "From the provided sources, the impact of interest rates and GDP growth on financial markets can be observed through the line graph. [Financial Market Analysis Report 2023-7.png]"
         else:
             answer = "The capital of France is Paris. [Benefit_Options-2.pdf]."
             if messages[0]["content"].find("Generate 3 very brief follow-up questions") > -1:
@@ -291,11 +264,12 @@ async def client(
     mock_openai_embedding,
     mock_acs_search,
     mock_blob_container_client,
+    mock_compute_embeddings_call,
 ):
     quart_app = app.create_app()
 
     async with quart_app.test_app() as test_app:
-        quart_app.config.update({"TESTING": True})
+        test_app.app.config.update({"TESTING": True})
         mock_openai_chatcompletion(test_app.app.config[app.CONFIG_OPENAI_CLIENT])
         mock_openai_embedding(test_app.app.config[app.CONFIG_OPENAI_CLIENT])
         yield test_app.test_client()
@@ -393,24 +367,6 @@ def mock_confidential_client_overage(monkeypatch):
         pass
 
     monkeypatch.setattr(msal.ConfidentialClientApplication, "__init__", mock_init)
-
-
-class MockResponse:
-    def __init__(self, text, status):
-        self.text = text
-        self.status = status
-
-    async def text(self):
-        return self._text
-
-    async def __aexit__(self, exc_type, exc, tb):
-        pass
-
-    async def __aenter__(self):
-        return self
-
-    async def json(self):
-        return json.loads(self.text)
 
 
 @pytest.fixture

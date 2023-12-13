@@ -17,7 +17,7 @@
                         "description": "capital of France",
                         "props": {
                             "has_vector": false,
-                            "semanticCaptions": true
+                            "use_semantic_captions": true
                         },
                         "title": "Generated search query"
                     },

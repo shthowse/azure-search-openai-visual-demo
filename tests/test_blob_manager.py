@@ -3,8 +3,8 @@ import sys
 from tempfile import NamedTemporaryFile
 
 import pytest
-from conftest import MockAzureCredential
 
+from .mocks import MockAzureCredential
 from scripts.prepdocslib.blobmanager import BlobManager
 from scripts.prepdocslib.listfilestrategy import File
 
